@@ -9,6 +9,7 @@ import {
   Animation as SwiftAnimation,
   animation as swiftAnimationModifier,
   id as swiftIdModifier,
+  ignoreSafeArea,
   privacySensitive,
   scrollDismissesKeyboard,
   scrollPosition,
@@ -76,16 +77,23 @@ export function getPlatformAnimationModifiers(
 export function getPlatformScrollContainerModifiers(
   dismissOnDrag: boolean,
   scrollTargetState: ObservableState<string | null>,
-  _keyboardAware = true,
+  keyboardAware = true,
   _onContainerMeasured?: (rect: AnchorLayoutRect) => void
 ): { scrollModifiers: any[]; contentModifiers: any[] } {
+  const scrollModifiers: any[] = [
+    scrollDismissesKeyboard(dismissOnDrag ? 'interactively' : 'never'),
+    scrollPosition(scrollTargetState as unknown as Parameters<typeof scrollPosition>[0], {
+      anchor: 'center',
+    }),
+  ];
+  // SwiftUI ScrollView applies keyboard safe-area avoidance automatically by default.
+  // When `scroll.keyboardAware === false`, explicitly opt out of `.keyboard` safe-area insets
+  // so iOS and Android (`imePadding()`) honor `keyboardAware` identically.
+  if (!keyboardAware) {
+    scrollModifiers.push(ignoreSafeArea({ regions: 'keyboard' }));
+  }
   return {
-    scrollModifiers: [
-      scrollDismissesKeyboard(dismissOnDrag ? 'interactively' : 'never'),
-      scrollPosition(scrollTargetState as unknown as Parameters<typeof scrollPosition>[0], {
-        anchor: 'center',
-      }),
-    ],
+    scrollModifiers,
     contentModifiers: [scrollTargetLayout()],
   };
 }

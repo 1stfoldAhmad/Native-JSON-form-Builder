@@ -56,18 +56,7 @@ export function FormRenderer({
     [onBindScrollHandle]
   );
 
-  const formMeta = useFormSelector(store, [], (s) => {
-    const snap = s.getState();
-    const steps = s.getVisibleSteps();
-    return {
-      submitStatus: snap.submitStatus,
-      isDirty: snap.isDirty,
-      isValid: snap.isValid,
-      formErrors: snap.formErrors,
-      currentStepIndex: snap.currentStepIndex,
-      totalSteps: steps.length,
-    };
-  });
+  const formMeta = useFormSelector(store, [], (s) => s.getFormMeta());
 
   const translations = config.i18n?.translations;
   const formStyles = useMemo(

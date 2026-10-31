@@ -24,6 +24,7 @@ import type { FieldRendererProps, PasswordVisibilityToggleConfig } from '../type
 import { COUNTRIES, getCountryByCode } from '../utils/countries';
 import { resolveLocalizedText } from '../utils/formatting';
 import { MASK_PRESETS } from '../utils/masking';
+import { isSensitiveField } from '../utils/security';
 import { evaluatePasswordStrength } from '../validation/passwordStrength';
 
 type AutoCompleteProp = TextInputProps['autoComplete'];
@@ -203,7 +204,16 @@ export function TextPersonalFieldRenderer({
   const inputRef = useRef<TextInputRef>(null);
 
   const isPasswordType =
-    field.type === 'password' || field.type === 'confirmPassword' || field.type === 'pin';
+    field.type === 'password' ||
+    field.type === 'newPassword' ||
+    field.type === 'confirmPassword' ||
+    field.type === 'pin' ||
+    field.type === 'cvv';
+
+  const isFieldSensitive = useMemo(
+    () => isSensitiveField(field, config.security),
+    [field, config.security]
+  );
 
   const visibilityConfig = useMemo(
     () => (isPasswordType ? resolveVisibilityToggle(field.visibilityToggle) : null),
@@ -266,12 +276,8 @@ export function TextPersonalFieldRenderer({
   const toggleModifiers = buildNativeAnimationModifiers(toggleAnim, isRevealed);
 
   const inputModifiers = useMemo(
-    () =>
-      getPlatformSensitiveInputModifiers(
-        isPasswordType || Boolean(field.sensitive),
-        field.type
-      ),
-    [isPasswordType, field.sensitive, field.type]
+    () => getPlatformSensitiveInputModifiers(isFieldSensitive, field.type),
+    [isFieldSensitive, field.type]
   );
 
   const leadingIcon = field.leadingIcon ?? preset.leadingIcon;

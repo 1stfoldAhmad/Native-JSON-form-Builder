@@ -1,22 +1,44 @@
 appId: com.firstfold.expoformdemo
 ---
-# Native SwiftUI (iOS) & Jetpack Compose (Android) E2E Smoke Flow
-# Verifies Host mounting, native TextInput state, validation scrolling, and submission.
+# Native SwiftUI (iOS) & Jetpack Compose (Android) E2E Critical Flows
+# Verifies Host mounting, native TextInput state, validation error scrolling,
+# multi-step wizard navigation, 88-type registration gallery, and Custom Studio.
 - launchApp:
     clearState: true
 
-- assertVisible: "Sign In"
+- assertVisible: "Form Gallery"
 
-# Trigger validation failure on empty submit to verify native error display & scroll anchor
+# 1. Login Form: empty submit -> native validation error -> text entry -> valid submit
+- openLink: "expo-form-demo:///login"
+- assertVisible: "Welcome Back"
+
+- tapOn:
+    id: "expo-form-submit-button"
+- assertVisible:
+    id: "field-error-identifier"
+
+- tapOn:
+    id: "input-identifier"
+- inputText: "ahmad@1stfold.com"
+
+- tapOn:
+    id: "input-password"
+- inputText: "SecurePass#2026"
+- hideKeyboard
+
 - tapOn:
     id: "expo-form-submit-button"
 
-# Navigate via deep link to Registration (88-type showcase) and Custom Studio
+# 2. Registration Form (All 88 Field Types Showcase)
 - openLink: "expo-form-demo:///register"
-- assertVisible: "Create Your Account"
+- assertVisible: "Register (All 88 Field Types)"
 
+# 3. Multi-Step Merchant KYC Wizard: verify step gating on Next button
 - openLink: "expo-form-demo:///kyc-wizard"
-- assertVisible: "Merchant KYC Verification"
+- assertVisible: "Merchant KYC & Payout Setup"
+- tapOn:
+    id: "wizard-next-button"
 
+# 4. Live Custom form.json Studio
 - openLink: "expo-form-demo:///custom-builder"
 - assertVisible: "Custom form.json Studio"

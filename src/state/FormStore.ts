@@ -203,6 +203,7 @@ export class FormStore {
   private formValidationEpoch = 0;
 
   private sensitivePaths: Set<string>;
+  private builtInSecretPaths: Set<string>;
   private allFieldsMap = new Map<string, FieldConfig>();
   private reverseDependencyMap = new Map<string, Set<string>>();
   private resetOnDepMap = new Map<string, Set<string>>();
@@ -228,9 +229,12 @@ export class FormStore {
     this.formReadOnly = Boolean(options.readOnly ?? options.config.readOnly);
 
     this.validationEngine = new ValidationEngine(this.config);
-    this.sensitivePaths = collectSensitiveFieldPaths(
-      this.collectAllConfiguredFields(this.config),
-      this.config.security
+    this.sensitivePaths = collectSensitiveFieldPaths(this.config, this.config.security);
+    this.builtInSecretPaths = collectSensitiveFieldPaths(
+      this.config,
+      this.config.security,
+      '',
+      { builtInSecretsOnly: true }
     );
 
     const seeded = buildInitialFormValues(this.config, options.initialValues);
@@ -275,9 +279,12 @@ export class FormStore {
       const prevId = this.config.id;
       this.config = options.config;
       this.validationEngine.updateConfig(options.config);
-      this.sensitivePaths = collectSensitiveFieldPaths(
-        this.collectAllConfiguredFields(this.config),
-        this.config.security
+      this.sensitivePaths = collectSensitiveFieldPaths(this.config, this.config.security);
+      this.builtInSecretPaths = collectSensitiveFieldPaths(
+        this.config,
+        this.config.security,
+        '',
+        { builtInSecretsOnly: true }
       );
       this.indexFieldsAndDependencies();
 
@@ -435,12 +442,14 @@ export class FormStore {
     const key = draftCfg.storageKey ?? draftCfg.key ?? `expo-form-draft:${this.config.id}`;
     const debounceMs = draftCfg.debounceMs ?? 500;
 
+    const getEffectiveDraftOmissionSet = (): ReadonlySet<string> =>
+      draftCfg.excludeSensitive === false && this.config.security?.protectSensitiveFields === false
+        ? this.builtInSecretPaths
+        : this.sensitivePaths;
+
     this.draftSaveDebouncer = createDebounced(() => {
       if (!this.storageAdapter) return;
-      const toPersist =
-        draftCfg.excludeSensitive === false && this.config.security?.protectSensitiveFields === false
-          ? this.values
-          : omitSensitiveValues(this.values, this.sensitivePaths);
+      const toPersist = omitSensitiveValues(this.values, getEffectiveDraftOmissionSet());
       try {
         void Promise.resolve(this.storageAdapter.setItem(key, JSON.stringify(toPersist)));
       } catch {
@@ -452,11 +461,10 @@ export class FormStore {
       if (!raw) return;
       const parsed = JSON.parse(raw) as unknown;
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
-      const sanitized =
-        draftCfg.excludeSensitive === false &&
-        this.config.security?.protectSensitiveFields === false
-          ? (parsed as FormValues)
-          : omitSensitiveValues(parsed as FormValues, this.sensitivePaths);
+      const sanitized = omitSensitiveValues(
+        parsed as FormValues,
+        getEffectiveDraftOmissionSet()
+      );
       this.setValues(sanitized, { shouldValidate: false });
     };
 
@@ -685,7 +693,14 @@ export class FormStore {
   }
 
   public getExternalVersion(fieldPath: string): number {
-    return this.externalValueVersion[fieldPath] ?? 0;
+    let ver = this.externalValueVersion[fieldPath] ?? 0;
+    let dotIdx = fieldPath.indexOf('.');
+    while (dotIdx !== -1) {
+      const ancestor = fieldPath.slice(0, dotIdx);
+      ver += this.externalValueVersion[ancestor] ?? 0;
+      dotIdx = fieldPath.indexOf('.', dotIdx + 1);
+    }
+    return ver;
   }
 
   public getFieldState(fieldPath: string, fieldOverride?: FieldConfig): FieldRuntimeState {
@@ -725,6 +740,31 @@ export class FormStore {
 
   public getRawError(fieldPath: string): string | undefined {
     return this.errors[fieldPath];
+  }
+
+  /**
+   * Lightweight form-level metadata selector without deep-cloning `values` or `initialValues`.
+   * Keeps top-level `FormRenderer` updates O(1) on large forms and repeaters.
+   */
+  public getFormMeta(): {
+    submitStatus: FormSubmitStatus;
+    isDirty: boolean;
+    isValid: boolean;
+    formErrors: readonly string[];
+    currentStepIndex: number;
+    totalSteps: number;
+  } {
+    const isDirty = Object.values(this.dirtyFields).some(Boolean);
+    const isValid = Object.keys(this.errors).length === 0 && this.formErrors.length === 0;
+    const totalSteps = this.getVisibleSteps().length;
+    return {
+      submitStatus: this.submitStatus,
+      isDirty,
+      isValid,
+      formErrors: this.formErrors,
+      currentStepIndex: this.currentStepIndex,
+      totalSteps,
+    };
   }
 
   public getState(): FormStateSnapshot {
@@ -831,11 +871,24 @@ export class FormStore {
     }
 
     this.values = setByPath(this.values, fieldPath, value);
-    if (opts.isProgrammatic) {
+    const isStructuralArrayMutation = Array.isArray(prev) || Array.isArray(value);
+    if (opts.isProgrammatic || isStructuralArrayMutation) {
       this.externalValueVersion[fieldPath] = (this.externalValueVersion[fieldPath] ?? 0) + 1;
     }
     if (valueChanged) {
       this.markFieldMutated(fieldPath);
+      if (Array.isArray(prev) && Array.isArray(value) && value.length !== prev.length) {
+        const childPrefix = `${fieldPath}.`;
+        for (const key of Object.keys(this.errors)) {
+          if (key.startsWith(childPrefix)) delete this.errors[key];
+        }
+        for (const key of Object.keys(this.touchedFields)) {
+          if (key.startsWith(childPrefix)) delete this.touchedFields[key];
+        }
+        for (const key of Object.keys(this.dirtyFields)) {
+          if (key.startsWith(childPrefix)) delete this.dirtyFields[key];
+        }
+      }
     }
 
     if (opts.shouldDirty !== false) {

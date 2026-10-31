@@ -15,6 +15,11 @@ import type {
 } from '../types';
 import { deepEqual, getByPath, isEmptyValue } from '../utils/deepPath';
 import { calculateAgeInYears, resolveLocalizedText } from '../utils/formatting';
+import {
+  inspectSchemaRegexPatterns,
+  MAX_REGEX_INPUT_LENGTH,
+  safeRegexTest,
+} from '../utils/regexSafety';
 import { evaluatePasswordStrength } from './passwordStrength';
 import {
   isValidCNIC,
@@ -377,6 +382,14 @@ export class ValidationEngine {
     this.schemaCompileError = null;
     if (!schema) return;
 
+    const unsafePatterns = inspectSchemaRegexPatterns(schema, 'config.schema');
+    if (unsafePatterns.length > 0) {
+      this.schemaCompileError = unsafePatterns
+        .map((p) => `${p.path}: ${p.reason}`)
+        .join('; ');
+      return;
+    }
+
     try {
       const normalizedSchema = normalizeEmbeddedJsonSchema(
         schema as Record<string, unknown>
@@ -695,7 +708,7 @@ export class ValidationEngine {
 
         if (
           (field.type === 'url' || field.type === 'website' || format === 'url') &&
-          !VALIDATION_PATTERNS.url.test(val.trim())
+          (val.length > MAX_REGEX_INPUT_LENGTH || !VALIDATION_PATTERNS.url.test(val.trim()))
         ) {
           pushError({
             field: path,
@@ -709,7 +722,7 @@ export class ValidationEngine {
           field.type === 'username' &&
           !fv?.regex &&
           !this.getSchemaProperty(path)?.pattern &&
-          !VALIDATION_PATTERNS.username.test(val)
+          (val.length > MAX_REGEX_INPUT_LENGTH || !VALIDATION_PATTERNS.username.test(val))
         ) {
           pushError({
             field: path,
@@ -726,12 +739,9 @@ export class ValidationEngine {
           let validCnic = false;
           let invalidPatternError = false;
           if (cnicCfg?.pattern) {
-            try {
-              validCnic = new RegExp(cnicCfg.pattern).test(val);
-            } catch {
-              validCnic = false;
-              invalidPatternError = true;
-            }
+            const cnicTest = safeRegexTest(cnicCfg.pattern, val);
+            validCnic = !cnicTest.blocked && cnicTest.matched;
+            invalidPatternError = cnicTest.blocked && val.length <= MAX_REGEX_INPUT_LENGTH;
           } else {
             validCnic = isValidCNIC(val, cnicCfg?.allowUnformatted ?? true);
           }
@@ -788,12 +798,29 @@ export class ValidationEngine {
               : [fv.regex as RegexRuleConfig];
 
           for (const rule of regexRules) {
-            let re: RegExp;
-            try {
-              re = rule.flags
-                ? new RegExp(rule.pattern, rule.flags)
-                : resolveNamedPattern(rule.pattern);
-            } catch {
+            if (val.length > MAX_REGEX_INPUT_LENGTH) {
+              pushError({
+                field: path,
+                message:
+                  rule.message ??
+                  fv.messages?.pattern ??
+                  `${label} exceeds maximum length of ${MAX_REGEX_INPUT_LENGTH} characters`,
+                rule: rule.name ?? 'regex',
+                source: 'field',
+              });
+              continue;
+            }
+            const re = resolveNamedPattern(rule.pattern, rule.flags);
+            if (!re) {
+              pushError({
+                field: path,
+                message:
+                  rule.message ??
+                  fv.messages?.pattern ??
+                  `Unsafe or invalid validation pattern configured for ${label}`,
+                rule: rule.name ?? 'regex',
+                source: 'field',
+              });
               continue;
             }
             if (!re.test(val)) {
