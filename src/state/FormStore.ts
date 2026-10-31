@@ -1,13 +1,26 @@
 import { AccessibilityInfo, Keyboard } from 'react-native';
 
+import {
+  compileFormSchema,
+  type CompiledFieldNode,
+  type CompiledFormPlan,
+} from '../compiler';
 import { evaluateComputedField } from '../conditions/computed';
 import {
   collectFieldDependencies,
   evaluateCondition,
   isFieldEnabled,
+  isFieldReadOnly,
   isFieldRequired,
   isFieldVisible,
+  type ConditionEvaluationContext,
 } from '../conditions/evaluator';
+import {
+  expandTargetTemplatePaths,
+  toWildcardTemplatePath,
+  type DependencyGraph,
+} from '../engine/DependencyGraph';
+import { evaluateFormula } from '../formula';
 import type {
   ActionHandler,
   AsyncFieldValidator,
@@ -204,6 +217,7 @@ export class FormStore {
 
   private sensitivePaths: Set<string>;
   private builtInSecretPaths: Set<string>;
+  private compiledPlan: CompiledFormPlan;
   private allFieldsMap = new Map<string, FieldConfig>();
   private reverseDependencyMap = new Map<string, Set<string>>();
   private resetOnDepMap = new Map<string, Set<string>>();
@@ -211,6 +225,9 @@ export class FormStore {
 
   private pathListeners = new Map<string, Set<() => void>>();
   private globalListeners = new Set<() => void>();
+  private batchDepth = 0;
+  private pendingBatchPaths = new Set<string>();
+  private pendingBatchNotifyAll = false;
   private focusHandles = new Map<string, FocusableFieldHandle>();
   private fieldValidateDebouncers = new Map<string, DebouncedFunction<[string]>>();
   private draftSaveDebouncer: DebouncedFunction<[]> | null = null;
@@ -228,6 +245,7 @@ export class FormStore {
     this.formDisabled = Boolean(options.disabled ?? options.config.disabled);
     this.formReadOnly = Boolean(options.readOnly ?? options.config.readOnly);
 
+    this.compiledPlan = compileFormSchema(this.config);
     this.validationEngine = new ValidationEngine(this.config);
     this.sensitivePaths = collectSensitiveFieldPaths(this.config, this.config.security);
     this.builtInSecretPaths = collectSensitiveFieldPaths(
@@ -242,6 +260,7 @@ export class FormStore {
     this.initialValues = deepClone(seeded);
 
     this.indexFieldsAndDependencies();
+    this.applyDefaultFormulas(options.initialValues);
     this.recomputeAllComputedFields(false);
     this.initialValues = deepClone(this.values);
     this.setupDraftPersistence();
@@ -278,6 +297,7 @@ export class FormStore {
     if (options.config && options.config !== this.config) {
       const prevId = this.config.id;
       this.config = options.config;
+      this.compiledPlan = compileFormSchema(this.config);
       this.validationEngine.updateConfig(options.config);
       this.sensitivePaths = collectSensitiveFieldPaths(this.config, this.config.security);
       this.builtInSecretPaths = collectSensitiveFieldPaths(
@@ -304,6 +324,7 @@ export class FormStore {
         this.fieldValidationSeq = {};
         this.filesByField = {};
         this.currentStepIndex = 0;
+        this.applyDefaultFormulas(options.initialValues);
         this.recomputeAllComputedFields(false);
         this.initialValues = deepClone(this.values);
         for (const key of this.allFieldsMap.keys()) {
@@ -393,7 +414,12 @@ export class FormStore {
             }
           }
 
-          if (field.type === 'computed' || field.computed) {
+          if (
+            field.type === 'computed' ||
+            field.type === 'calculated' ||
+            field.computed ||
+            field.formula
+          ) {
             this.computedFields.push({ path, field });
           }
         }
@@ -418,21 +444,144 @@ export class FormStore {
     }
   }
 
-  private recomputeAllComputedFields(notifyListeners: boolean): string[] {
+  public getCompiledPlan(): CompiledFormPlan {
+    return this.compiledPlan;
+  }
+
+  public getDependencyGraph(): DependencyGraph {
+    return this.compiledPlan.graph;
+  }
+
+  /**
+   * Batches multiple synchronous state mutations so subscribers receive a single
+   * coalesced notification pass after `fn()` completes.
+   */
+  public batch<T>(fn: () => T): T {
+    this.batchDepth += 1;
+    try {
+      return fn();
+    } finally {
+      this.batchDepth -= 1;
+      if (this.batchDepth === 0) {
+        if (this.pendingBatchNotifyAll) {
+          this.pendingBatchNotifyAll = false;
+          this.pendingBatchPaths.clear();
+          this.bumpAndNotifyAll();
+        } else if (this.pendingBatchPaths.size > 0) {
+          const paths = Array.from(this.pendingBatchPaths);
+          this.pendingBatchPaths.clear();
+          this.notifyPaths(paths);
+        }
+      }
+    }
+  }
+
+  private extractRowScope(concretePath: string): {
+    rowPrefix?: string;
+    rowIndex?: number;
+  } {
+    const segs = concretePath.split('.');
+    for (let i = segs.length - 2; i >= 0; i -= 1) {
+      if (/^\d+$/.test(segs[i])) {
+        return {
+          rowPrefix: segs.slice(0, i + 1).join('.'),
+          rowIndex: Number(segs[i]),
+        };
+      }
+    }
+    return {};
+  }
+
+  private buildConditionContext(concretePath?: string): ConditionEvaluationContext {
+    const scope = concretePath ? this.extractRowScope(concretePath) : {};
+    return {
+      namedConditions: this.compiledPlan.namedConditions,
+      rowPrefix: scope.rowPrefix,
+      rowIndex: scope.rowIndex,
+    };
+  }
+
+  private applyDefaultFormulas(explicitInitialValues?: FormValues): void {
+    for (const tplPath of this.compiledPlan.defaultFormulaPaths) {
+      const node = this.compiledPlan.nodes.get(tplPath);
+      if (!node?.defaultFormulaAst) continue;
+
+      const targets = expandTargetTemplatePaths(tplPath, '', this.values);
+      for (const concretePath of targets) {
+        if (explicitInitialValues && getByPath(explicitInitialValues, concretePath) !== undefined) {
+          continue;
+        }
+        const current = getByPath(this.values, concretePath);
+        if (current !== undefined && current !== '') continue;
+
+        const scope = this.extractRowScope(concretePath);
+        const res = evaluateFormula(node.defaultFormulaAst, this.values, {
+          ...scope,
+          precision: node.field.precision,
+        });
+        if (res.value !== undefined) {
+          this.values = setByPath(this.values, concretePath, res.value);
+          this.externalValueVersion[concretePath] =
+            (this.externalValueVersion[concretePath] ?? 0) + 1;
+        }
+      }
+    }
+  }
+
+  private evaluateSingleFormulaNode(
+    concretePath: string,
+    node: CompiledFieldNode | undefined
+  ): unknown {
+    const scope = this.extractRowScope(concretePath);
+    if (node?.formulaAst) {
+      const res = evaluateFormula(node.formulaAst, this.values, {
+        ...scope,
+        precision: node.field.precision ?? node.field.computed?.precision,
+      });
+      return res.value;
+    }
+
+    const field = node?.field ?? this.allFieldsMap.get(concretePath);
+    if (!field) return undefined;
+    return evaluateComputedField(field, this.values, this.calculators, {
+      ...scope,
+      conditionContext: this.buildConditionContext(concretePath),
+    });
+  }
+
+  private recomputeFormulasByConcretePaths(
+    concretePaths: readonly string[],
+    notifyListeners: boolean
+  ): string[] {
     const changedComputedPaths: string[] = [];
-    for (const { path, field } of this.computedFields) {
-      const nextVal = evaluateComputedField(field, this.values, this.calculators);
-      const prevVal = getByPath(this.values, path);
+    for (const concretePath of concretePaths) {
+      const node =
+        this.compiledPlan.nodes.get(concretePath) ??
+        this.compiledPlan.nodes.get(toWildcardTemplatePath(concretePath));
+      const nextVal = this.evaluateSingleFormulaNode(concretePath, node);
+      const prevVal = getByPath(this.values, concretePath);
       if (!deepEqual(prevVal, nextVal)) {
-        this.values = setByPath(this.values, path, nextVal);
-        this.externalValueVersion[path] = (this.externalValueVersion[path] ?? 0) + 1;
-        changedComputedPaths.push(path);
+        this.values = setByPath(this.values, concretePath, nextVal);
+        this.externalValueVersion[concretePath] =
+          (this.externalValueVersion[concretePath] ?? 0) + 1;
+        changedComputedPaths.push(concretePath);
       }
     }
     if (notifyListeners && changedComputedPaths.length > 0) {
       this.notifyPaths(changedComputedPaths);
     }
     return changedComputedPaths;
+  }
+
+  private recomputeAllComputedFields(notifyListeners: boolean): string[] {
+    const orderedConcrete: string[] = [];
+    for (const tplPath of this.compiledPlan.formulaEvalOrder) {
+      const expanded = expandTargetTemplatePaths(tplPath, '', this.values);
+      for (const p of expanded) {
+        orderedConcrete.push(p);
+      }
+    }
+    return this.recomputeFormulasByConcretePaths(orderedConcrete, notifyListeners);
   }
 
   private setupDraftPersistence(): void {
@@ -542,6 +691,11 @@ export class FormStore {
   }
 
   private notifyPaths(paths: readonly string[]): void {
+    if (this.batchDepth > 0) {
+      for (const p of paths) this.pendingBatchPaths.add(p);
+      return;
+    }
+
     this.snapshotVersion += 1;
     const toCall = new Set<() => void>();
 
@@ -565,6 +719,15 @@ export class FormStore {
           }
         }
       }
+      const graphDependents = this.compiledPlan.graph.getDirectDependents(p);
+      for (const depTpl of graphDependents) {
+        for (const depPath of expandTargetTemplatePaths(depTpl, p, this.values)) {
+          const depListeners = this.pathListeners.get(depPath);
+          if (depListeners) {
+            for (const fn of depListeners) toCall.add(fn);
+          }
+        }
+      }
     }
 
     for (const fn of this.globalListeners) {
@@ -577,6 +740,10 @@ export class FormStore {
   }
 
   private bumpAndNotifyAll(): void {
+    if (this.batchDepth > 0) {
+      this.pendingBatchNotifyAll = true;
+      return;
+    }
     this.snapshotVersion += 1;
     const toCall = new Set<() => void>(this.globalListeners);
     for (const set of this.pathListeners.values()) {
@@ -632,13 +799,15 @@ export class FormStore {
     return active
       .filter((d) => {
         if (!d.parentVisible) return false;
+        const condCtx = this.buildConditionContext(d.path);
         if (stepFieldNames && !stepFieldNames.has(d.path)) return false;
-        if (d.field.readOnly || this.formReadOnly) return false;
-        if (!isFieldEnabled(d.field, this.values, this.formDisabled)) return false;
+        if (isFieldReadOnly(d.field, this.values, this.formReadOnly, condCtx)) return false;
+        if (!isFieldEnabled(d.field, this.values, this.formDisabled, condCtx)) return false;
         if (
           d.field.type === 'hidden' ||
           d.field.type === 'readOnly' ||
-          d.field.type === 'computed'
+          d.field.type === 'computed' ||
+          d.field.type === 'calculated'
         ) {
           return false;
         }
@@ -704,7 +873,10 @@ export class FormStore {
   }
 
   public getFieldState(fieldPath: string, fieldOverride?: FieldConfig): FieldRuntimeState {
-    const field = fieldOverride ?? this.allFieldsMap.get(fieldPath);
+    const compiledNode =
+      this.compiledPlan.nodes.get(fieldPath) ??
+      this.compiledPlan.nodes.get(toWildcardTemplatePath(fieldPath));
+    const field = fieldOverride ?? compiledNode?.field ?? this.allFieldsMap.get(fieldPath);
     const val = getByPath(this.values, fieldPath);
     const initVal = getByPath(this.initialValues, fieldPath);
     const touched = Boolean(this.touchedFields[fieldPath]);
@@ -715,6 +887,7 @@ export class FormStore {
       this.submitCount > 0 || (!onlyAfterSubmit && (!showAfterTouch || touched));
 
     const rawError = this.errors[fieldPath];
+    const condCtx = this.buildConditionContext(fieldPath);
 
     return {
       value: val,
@@ -723,14 +896,20 @@ export class FormStore {
       touched,
       focused: this.focusedField === fieldPath,
       validating: Boolean(this.validatingFields[fieldPath]),
-      visible: field ? isFieldVisible(field, this.values) : true,
-      enabled: field ? isFieldEnabled(field, this.values, this.formDisabled) : !this.formDisabled,
+      visible: field ? isFieldVisible(field, this.values, condCtx) : true,
+      enabled: field
+        ? isFieldEnabled(field, this.values, this.formDisabled, condCtx)
+        : !this.formDisabled,
+      readOnly: field
+        ? isFieldReadOnly(field, this.values, this.formReadOnly, condCtx)
+        : this.formReadOnly,
       required: field
         ? isFieldRequired(
             field,
             this.values,
             this.validationEngine.getSchemaRequiredSet(),
-            fieldPath
+            fieldPath,
+            condCtx
           )
         : false,
       error: canShowError ? rawError : undefined,
@@ -900,14 +1079,15 @@ export class FormStore {
     }
 
     const affectedPaths = [fieldPath];
+    const evalPlan = this.compiledPlan.graph.getEvaluationPlan([fieldPath], this.values);
 
-    // Reset dependent selection fields (e.g. changing country clears state & city)
-    const resetTargets = this.resetOnDepMap.get(fieldPath);
-    if (resetTargets && valueChanged) {
-      const queue = [...resetTargets];
-      while (queue.length > 0) {
-        const target = queue.shift()!;
-        const targetField = this.allFieldsMap.get(target);
+    // 1. Reset dependent selection fields transitively (e.g. changing country clears state & city)
+    if (evalPlan.dataSourcesToReset.length > 0 && valueChanged) {
+      for (const target of evalPlan.dataSourcesToReset) {
+        const targetNode =
+          this.compiledPlan.nodes.get(target) ??
+          this.compiledPlan.nodes.get(toWildcardTemplatePath(target));
+        const targetField = targetNode?.field ?? this.allFieldsMap.get(target);
         const emptyVal = targetField ? defaultEmptyForField(targetField) ?? '' : '';
         if (!deepEqual(getByPath(this.values, target), emptyVal)) {
           this.values = setByPath(this.values, target, emptyVal);
@@ -915,18 +1095,19 @@ export class FormStore {
           this.markFieldMutated(target);
           delete this.errors[target];
           affectedPaths.push(target);
-          const nestedTargets = this.resetOnDepMap.get(target);
-          if (nestedTargets) queue.push(...nestedTargets);
         }
       }
     }
 
-    // Recompute any computed fields
-    const computedChanged = this.recomputeAllComputedFields(false);
+    // 2. Incrementally recompute ONLY affected formula/computed fields in topological order!
+    const computedChanged = this.recomputeFormulasByConcretePaths(
+      evalPlan.formulasToEvaluate,
+      false
+    );
     for (const cPath of computedChanged) {
       this.markFieldMutated(cPath);
     }
-    affectedPaths.push(...computedChanged);
+    affectedPaths.push(...computedChanged, ...evalPlan.affectedFields);
 
     // Clear error when corrected if configured
     const valCfg = this.config.validation;
@@ -955,21 +1136,23 @@ export class FormStore {
 
     const blockedUntilSubmit = Boolean(valCfg?.onlyAfterFirstSubmit && this.submitCount === 0);
 
+    const validationDependents = new Set<string>([
+      ...(this.reverseDependencyMap.get(fieldPath) ?? []),
+      ...evalPlan.validationsToReRun,
+    ]);
+
     if (shouldValidateOnChange && !blockedUntilSubmit) {
-      const dependentFieldsToRevalidate = Array.from(
-        this.reverseDependencyMap.get(fieldPath) ?? []
-      ).filter((dep) => this.touchedFields[dep] || this.submitCount > 0);
+      const dependentFieldsToRevalidate = Array.from(validationDependents).filter(
+        (dep) => this.touchedFields[dep] || this.submitCount > 0
+      );
       this.scheduleChangeValidation(fieldPath, dependentFieldsToRevalidate);
     } else {
       // Still revalidate touched dependent cross-fields (e.g. confirmPassword when password changes!)
-      const dependents = this.reverseDependencyMap.get(fieldPath);
-      if (dependents) {
-        const touchedDeps = Array.from(dependents).filter(
-          (dep) => this.touchedFields[dep] || this.submitCount > 0
-        );
-        if (touchedDeps.length > 0) {
-          this.runSyncValidationForFields(touchedDeps);
-        }
+      const touchedDeps = Array.from(validationDependents).filter(
+        (dep) => this.touchedFields[dep] || this.submitCount > 0
+      );
+      if (touchedDeps.length > 0) {
+        this.runSyncValidationForFields(touchedDeps);
       }
     }
 

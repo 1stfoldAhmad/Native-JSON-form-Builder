@@ -357,8 +357,38 @@ export function createDefaultFieldRegistry(): FieldRegistry {
     });
   }
 
+  // Built-in aliases (keeping ALL_BUILT_IN_FIELD_TYPES at the canonical 88 base types)
+  registry.register({
+    type: 'calculated',
+    component: StructuralFieldRenderer,
+    category: 'structural',
+    isStructural: false,
+  });
+  registry.register({
+    type: 'newPassword',
+    component: TextPersonalFieldRenderer,
+    category: 'text',
+  });
+  registry.register({
+    type: 'cvv',
+    component: NumericFieldRenderer,
+    category: 'numeric',
+  });
+
   return registry;
 }
+
+/**
+ * Built-in alias field types registered alongside `ALL_BUILT_IN_FIELD_TYPES`.
+ */
+export const BUILT_IN_FIELD_TYPE_ALIASES: readonly string[] = [
+  'calculated',
+  'newPassword',
+  'cvv',
+  'barcode',
+  'qrCode',
+  'documentScan',
+];
 
 /**
  * Default singleton FieldRegistry pre-populated with all 88 built-in native renderers.

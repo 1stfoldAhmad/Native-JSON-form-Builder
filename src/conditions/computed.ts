@@ -1,3 +1,7 @@
+import {
+  evaluateFormula,
+  type FormulaScopeContext,
+} from '../formula';
 import type {
   ComputedCalculator,
   ComputedFieldFormula,
@@ -6,13 +10,24 @@ import type {
 } from '../types';
 import { getByPath } from '../utils/deepPath';
 import { calculateAgeInYears } from '../utils/formatting';
-import { evaluateCondition } from './evaluator';
+import { evaluateCondition, type ConditionEvaluationContext } from './evaluator';
 
 export function evaluateComputedField(
   fieldOrFormula: FieldConfig | ComputedFieldFormula,
   values: FormValues,
-  calculators?: Record<string, ComputedCalculator>
+  calculators?: Record<string, ComputedCalculator>,
+  scope?: FormulaScopeContext & { conditionContext?: ConditionEvaluationContext }
 ): unknown {
+  // 1. Evaluate restricted string expression (`field.formula`) when configured on `FieldConfig`
+  if (!('operation' in fieldOrFormula) && typeof fieldOrFormula.formula === 'string') {
+    const precision = fieldOrFormula.precision ?? fieldOrFormula.computed?.precision;
+    const res = evaluateFormula(fieldOrFormula.formula, values, {
+      ...scope,
+      precision,
+    });
+    return res.value;
+  }
+
   const formula =
     'operation' in fieldOrFormula ? fieldOrFormula : fieldOrFormula.computed;
   if (!formula) return undefined;
@@ -31,7 +46,14 @@ export function evaluateComputedField(
     return Math.round(n * factor) / factor;
   };
 
-  const sourceValues = (formula.fields ?? []).map((p) => getByPath(values, p));
+  const resolveSourcePath = (rawPath: string): unknown => {
+    if (rawPath.startsWith('$item.') && scope?.rowPrefix) {
+      return getByPath(values, `${scope.rowPrefix}.${rawPath.slice('$item.'.length)}`);
+    }
+    return getByPath(values, rawPath);
+  };
+
+  const sourceValues = (formula.fields ?? []).map(resolveSourcePath);
   const numericValues = sourceValues.map((v) => {
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
@@ -40,8 +62,8 @@ export function evaluateComputedField(
   switch (formula.operation) {
     case 'template': {
       const tpl = formula.template ?? '';
-      return tpl.replace(/\{\{\s*([a-zA-Z0-9_.[\]]+)\s*\}\}/g, (_, path: string) => {
-        const val = getByPath(values, path);
+      return tpl.replace(/\{\{\s*([a-zA-Z0-9_.$[\]]+)\s*\}\}/g, (_, path: string) => {
+        const val = resolveSourcePath(path);
         return val === null || val === undefined ? '' : String(val);
       });
     }
@@ -72,7 +94,7 @@ export function evaluateComputedField(
     }
     case 'ageFromDate': {
       const dobField = formula.fields?.[0];
-      const dob = dobField ? getByPath(values, dobField) : undefined;
+      const dob = dobField ? resolveSourcePath(dobField) : undefined;
       if (!dob || (typeof dob !== 'string' && !(dob instanceof Date))) return undefined;
       return calculateAgeInYears(dob) ?? undefined;
     }
@@ -83,7 +105,9 @@ export function evaluateComputedField(
       return 0;
     }
     case 'conditional': {
-      return evaluateCondition(formula.when, values) ? formula.thenValue : formula.elseValue;
+      return evaluateCondition(formula.when, values, scope?.conditionContext)
+        ? formula.thenValue
+        : formula.elseValue;
     }
     default:
       return undefined;

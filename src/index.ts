@@ -37,7 +37,50 @@ export {
   createDefaultFieldRegistry,
   registerField,
   ALL_BUILT_IN_FIELD_TYPES,
+  BUILT_IN_FIELD_TYPE_ALIASES,
 } from './fields/FieldRegistry';
+
+// Intelligent Form Engine: Dependency Graph, Formula Engine & Schema Compiler
+export {
+  DependencyGraph,
+  expandTargetTemplatePaths,
+  toWildcardTemplatePath,
+  type DependencyEdge,
+  type DependencyEdgeKind,
+  type DependencyEvaluationPlan,
+  type DependencyGraphSnapshot,
+} from './engine';
+export {
+  FormulaSyntaxError,
+  MAX_FORMULA_LENGTH,
+  MAX_FORMULA_TOKENS,
+  MAX_FORMULA_AST_DEPTH,
+  tokenizeFormula,
+  parseFormula,
+  inspectFormulaAST,
+  clearCompiledFormulaCache,
+  FormulaFunctionRegistry,
+  defaultFormulaFunctionRegistry,
+  evaluateFormula,
+  resolveFormulaFieldPath,
+  type FormulaToken,
+  type FormulaASTNode,
+  type FormulaParseResult,
+  type PureFormulaFunction,
+  type FormulaScopeContext,
+  type FormulaEvalResult,
+} from './formula';
+export {
+  SCHEMA_COMPILER_VERSION,
+  canonicalStableStringify,
+  fnv1aHashHex,
+  computeConfigFingerprints,
+  compileFormSchema,
+  clearCompiledFormPlanCache,
+  type CompiledFieldNode,
+  type CompiledFormPlan,
+  type CompileFormOptions,
+} from './compiler';
 
 // Icons
 export {
@@ -59,11 +102,20 @@ export {
   isValidPostalCode,
 } from './validation/patterns';
 export {
+  ConditionRegistry,
+  defaultConditionRegistry,
+  type CustomConditionOperatorFn,
+} from './conditions/ConditionRegistry';
+export {
+  buildDependencyGraph,
   evaluateCondition,
+  extractConditionFieldPaths,
   isFieldVisible,
   isFieldEnabled,
+  isFieldReadOnly,
   isFieldRequired,
   collectFieldDependencies,
+  type ConditionEvaluationContext,
 } from './conditions/evaluator';
 export { evaluateComputedField } from './conditions/computed';
 export { FormStore, buildInitialFormValues } from './state/FormStore';

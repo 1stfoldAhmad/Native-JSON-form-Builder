@@ -156,13 +156,41 @@ export interface FieldOption {
   meta?: Record<string, unknown>;
 }
 
+export interface DataSourceOptionMapping {
+  labelKey: string;
+  valueKey: string;
+  descriptionKey?: string;
+  disabledKey?: string;
+  groupKey?: string;
+}
+
 /**
- * Remote or registered data-source binding for dynamic/dependent dropdowns,
+ * Remote, REST, static, or registered data-source binding for dynamic/dependent dropdowns,
  * searchable selects, autocomplete, and location search.
  */
 export interface FieldDataSourceConfig {
-  /** Registered data source identifier in ExpoFormProvider / ExpoForm props. */
+  /** Registered data source identifier in ExpoFormProvider / ExpoForm props (or inline REST source ID). */
   id: string;
+  /** Data source transport kind. Defaults to 'provider' unless `url` is specified. */
+  type?: 'provider' | 'rest' | 'static';
+  /** Declarative REST endpoint template supporting `{{depField}}`, `{{query}}`, `{{page}}`, `{{pageSize}}`. */
+  url?: string;
+  /** HTTP method when `type: 'rest'` or `url` is specified. Defaults to 'GET'. */
+  method?: 'GET' | 'POST';
+  /** Static non-secret HTTP headers for REST requests. */
+  headers?: Record<string, string>;
+  /** Registered auth header/token provider ID so credentials are never embedded in JSON. */
+  authProviderId?: string;
+  /** Dot-path into the JSON response body locating the array of items (e.g. 'data.items'). */
+  responsePath?: string;
+  /** Dot-path into the JSON response body locating `hasMore` boolean (e.g. 'meta.hasMore'). */
+  hasMorePath?: string;
+  /** Declarative mapping from raw REST item objects to `FieldOption`. */
+  mapOption?: DataSourceOptionMapping;
+  /** Cache TTL in milliseconds (defaults to 60_000 for REST/provider when caching is enabled; 0 disables cache). */
+  cacheTtlMs?: number;
+  /** Static option items when `type: 'static'`. */
+  options?: readonly (FieldOption | string)[];
   /** Other field paths whose current values are forwarded as query parameters (e.g. ['country', 'state']). */
   dependsOn?: readonly string[];
   /** Clear field value automatically whenever a depended-on field changes. Defaults to true. */
@@ -177,6 +205,35 @@ export interface FieldDataSourceConfig {
   emptyMessage?: string;
   /** Loading state text. */
   loadingMessage?: string;
+}
+
+/**
+ * Role-based UX & client validation permission policy.
+ * Note: Client-side visibility/editability rules are NEVER authorization; sensitive access
+ * restrictions must always be enforced server-side as well.
+ */
+export interface PermissionRuleConfig {
+  /** Roles allowed to view this element. Omit to allow all roles. */
+  visibleForRoles?: readonly string[];
+  /** Roles hidden from viewing this element. */
+  hiddenForRoles?: readonly string[];
+  /** Roles allowed to edit/interact with this element. Non-matching roles render read-only. */
+  editableForRoles?: readonly string[];
+  /** Roles explicitly forced into read-only mode. */
+  readOnlyForRoles?: readonly string[];
+  /** Roles for whom this field becomes required. */
+  requiredForRoles?: readonly string[];
+  /** Roles allowed to invoke a workflow/step action. */
+  allowedRoles?: readonly string[];
+}
+
+export interface BarcodeScanConfig {
+  /** Allowed symbologies (e.g. ['qr', 'ean13', 'ean8', 'code128', 'pdf417']). */
+  formats?: readonly string[];
+  /** Reject duplicate scanned codes within the same session/repeater. */
+  preventDuplicates?: boolean;
+  /** Optional regex/prefix extractor or field mapping key. */
+  extractPattern?: string;
 }
 
 /**
@@ -308,6 +365,10 @@ export interface FormStepConfig {
   /** Validate step fields before advancing to next step. Defaults to true. */
   validateBeforeNext?: boolean;
   visibleWhen?: ConditionExpression;
+  /** Conditionally skip this step during forward/backward wizard navigation while keeping it defined. */
+  skipWhen?: ConditionExpression;
+  /** Step-level role permissions. */
+  permissions?: PermissionRuleConfig;
   nextLabel?: string | Record<string, string>;
   previousLabel?: string | Record<string, string>;
 }
@@ -450,6 +511,16 @@ export interface FieldConfig {
   removeButtonLabel?: string;
   itemLabelTemplate?: string;
   computed?: ComputedFieldFormula;
+  /** Restricted formula expression (e.g. `"baseFee + (baseFee * taxRate / 100)"` or `"SUM(items.*.amount)"`). Never uses `eval`. */
+  formula?: string;
+  /** Restricted formula expression computing the initial default value when no explicit value is provided. */
+  defaultFormula?: string;
+  /** Optional registered input/display formatter ID. */
+  formatterId?: string;
+  /** Optional QR / barcode scan configuration. */
+  scan?: BarcodeScanConfig;
+  /** Role-based UX & client validation permissions (server must still enforce authorization). */
+  permissions?: PermissionRuleConfig;
 
   /** Layout hints within a grid/row. */
   width?: number | `${number}%` | (string & {});
@@ -461,6 +532,7 @@ export interface FieldConfig {
   hiddenWhen?: ConditionExpression;
   enabledWhen?: ConditionExpression;
   disabledWhen?: ConditionExpression;
+  readOnlyWhen?: ConditionExpression;
   requiredWhen?: ConditionExpression;
 
   /** Per-field validation (Layer 2). */

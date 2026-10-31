@@ -44,6 +44,7 @@ export function StructuralFieldRenderer(props: FieldRendererProps) {
       return <DividerField />;
     case 'readOnly':
     case 'computed':
+    case 'calculated':
       return <ReadOnlyOrComputedField {...props} />;
     case 'section':
       return <InlineSectionField {...props} />;

@@ -1,7 +1,65 @@
 import type { FormAnimationsConfig } from './animations';
-import type { FieldConfig, FormStepConfig } from './fields';
+import type {
+  FieldConfig,
+  FieldDataSourceConfig,
+  FormStepConfig,
+  PermissionRuleConfig,
+} from './fields';
 import type { FormStyleConfig, FormThemeConfig } from './styles';
 import type { ConditionExpression, FormValidationBehaviorConfig, JsonSchemaDefinition } from './validation';
+
+export type PlatformCapabilityName =
+  | 'camera'
+  | 'gallery'
+  | 'documentScanner'
+  | 'signature'
+  | 'barcodeScanner'
+  | 'location'
+  | 'nativeDatePicker'
+  | 'nativeColorPicker';
+
+export interface PlatformCapabilities {
+  camera: boolean;
+  gallery: boolean;
+  documentScanner: boolean;
+  signature: boolean;
+  barcodeScanner: boolean;
+  location: boolean;
+  nativeDatePicker: boolean;
+  nativeColorPicker?: boolean;
+}
+
+export interface FormCapabilityRequirementsConfig {
+  required?: readonly PlatformCapabilityName[];
+  optional?: readonly PlatformCapabilityName[];
+}
+
+export type SubmissionLifecycleState =
+  | 'draft'
+  | 'in_progress'
+  | 'ready_for_submission'
+  | 'submitted'
+  | 'under_review'
+  | 'approved'
+  | 'rejected'
+  | 'cancelled'
+  | 'archived';
+
+export interface ApprovalStageConfig {
+  id: string;
+  title: string | Record<string, string>;
+  reviewerRoles?: readonly string[];
+  requiredApprovals?: number;
+  allowReassign?: boolean;
+  requireCommentOnReject?: boolean;
+}
+
+export interface FormWorkflowConfig {
+  initialState?: SubmissionLifecycleState;
+  allowSaveAndResume?: boolean;
+  offlineQueue?: boolean;
+  approvalStages?: readonly ApprovalStageConfig[];
+}
 
 /**
  * Form section configuration (Section 7 & Section 14).
@@ -21,6 +79,7 @@ export interface FormSectionConfig {
   fields: readonly (FieldConfig | string)[];
   visibleWhen?: ConditionExpression;
   hiddenWhen?: ConditionExpression;
+  permissions?: PermissionRuleConfig;
 }
 
 /**
@@ -35,6 +94,10 @@ export interface FormLayoutConfig {
   tabletColumns?: number;
   /** Viewport width breakpoint in dp/px for tablet layout. Defaults to 768. */
   tabletBreakpoint?: number;
+  /** Number of columns on desktop/web viewports (>= desktopBreakpoint). */
+  desktopColumns?: number;
+  /** Viewport width breakpoint in dp/px for desktop/web layout. Defaults to 1024. */
+  desktopBreakpoint?: number;
   /** Vertical gap between fields/rows. */
   rowGap?: number;
   /** Horizontal gap between side-by-side fields. */
@@ -158,6 +221,12 @@ export interface FormDraftConfig {
   key?: string;
   /** Debounce interval (ms) before saving draft changes. Defaults to 500. */
   debounceMs?: number;
+  /** Autosave triggers. Defaults to ['onChange']. */
+  triggers?: readonly ('onChange' | 'onBlur' | 'onStepChange' | 'interval')[];
+  /** Periodic autosave interval in ms when `'interval'` trigger is enabled. */
+  intervalMs?: number;
+  /** Draft expiration window in ms (expired drafts are discarded on load). */
+  maxAgeMs?: number;
   /** Exclude sensitive fields (passwords, PINs, OTPs) from persisted drafts. Defaults to true (enforced). */
   excludeSensitive?: boolean;
   /** Clear saved draft automatically after successful submission. Defaults to true. */
@@ -256,6 +325,24 @@ export interface FormConfig {
 
   /** Security & sensitive-field handling configuration. */
   security?: FormSecurityConfig;
+
+  /** Reusable named condition definitions referenced via `{ "ref": "conditionName" }`. */
+  conditions?: Record<string, ConditionExpression>;
+
+  /** Declarative form-scoped data source definitions (static, provider, or REST). */
+  dataSources?: Record<string, FieldDataSourceConfig>;
+
+  /** Required and optional native platform capabilities for this form. */
+  capabilities?: FormCapabilityRequirementsConfig;
+
+  /** Enterprise submission lifecycle & approval workflow metadata. */
+  workflow?: FormWorkflowConfig;
+
+  /** Form-level role permissions. */
+  permissions?: PermissionRuleConfig;
+
+  /** Optional minimum compatible engine semver (e.g. '1.0.0' or '2.0.0'). */
+  minEngineVersion?: string;
 
   /** Global disabled or read-only flags. */
   disabled?: boolean;

@@ -38,14 +38,25 @@ export function FieldNodeRenderer({
   }, [field.name, field.id, field.type, pathPrefix]);
 
   const watchedPaths = useMemo(() => {
-    const deps = collectFieldDependencies(field);
+    const deps = collectFieldDependencies(field, {
+      namedConditions: config.conditions,
+      repeaterTemplatePrefix: pathPrefix || undefined,
+    });
     return field.name ? [fieldPath, ...deps] : deps;
-  }, [field, fieldPath]);
+  }, [field, fieldPath, config.conditions, pathPrefix]);
 
   const slice = useFormSelector(store, watchedPaths, (s) => {
     const valuesRef = s.getValuesRef();
-    const visible = field.type === 'hidden' ? false : isFieldVisible(field, valuesRef);
     const runtime = s.getFieldState(fieldPath, field);
+    const visible =
+      field.type === 'hidden'
+        ? false
+        : field.name
+          ? runtime.visible
+          : isFieldVisible(field, valuesRef, {
+              namedConditions: config.conditions,
+              rowPrefix: pathPrefix || undefined,
+            });
     const rawError = s.getRawError(fieldPath);
     const submitStatus = s.getState().submitStatus;
     return {
@@ -56,6 +67,7 @@ export function FieldNodeRenderer({
       focused: runtime.focused,
       validating: runtime.validating,
       enabled: runtime.enabled,
+      readOnly: Boolean(runtime.readOnly),
       required: runtime.required,
       error: runtime.error,
       rawError,
@@ -98,7 +110,8 @@ export function FieldNodeRenderer({
   }
 
   const disabled = externalDisabled || !slice.enabled || slice.isSubmitting;
-  const readOnly = externalReadOnly || Boolean(field.readOnly) || Boolean(config.readOnly);
+  const readOnly =
+    externalReadOnly || slice.readOnly || Boolean(field.readOnly) || Boolean(config.readOnly);
 
   const resolvedStyles = resolveFieldStyles(
     config.style,

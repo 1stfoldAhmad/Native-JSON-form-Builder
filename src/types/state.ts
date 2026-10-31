@@ -37,6 +37,7 @@ export interface FieldRuntimeState {
   validating: boolean;
   visible: boolean;
   enabled: boolean;
+  readOnly?: boolean;
   required: boolean;
   error?: string;
   files?: FormFileAsset[];
@@ -107,6 +108,8 @@ export interface ExpoFormRef<TValues extends FormValues = FormValues> {
   nextStep: () => Promise<boolean>;
   previousStep: () => void;
   goToStep: (stepIndex: number) => Promise<boolean>;
+  /** Explicitly persist the current draft immediately when draft persistence is configured. */
+  saveDraft?: () => Promise<void>;
   /** Clear any persisted draft in storage. */
   clearDraft: () => Promise<void>;
 }
