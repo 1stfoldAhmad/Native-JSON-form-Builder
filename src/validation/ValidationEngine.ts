@@ -131,10 +131,24 @@ export function collectActiveFields(
   return result;
 }
 
-function createAjvInstance(): Ajv2020 {
+export function normalizeEmbeddedJsonSchema(
+  schema: Record<string, unknown>
+): Record<string, unknown> {
+  const normalizedSchema: Record<string, unknown> = { ...schema };
+  if (
+    typeof normalizedSchema.$schema === 'string' &&
+    !normalizedSchema.$schema.includes('2020-12')
+  ) {
+    delete normalizedSchema.$schema;
+  }
+  return normalizedSchema;
+}
+
+export function createFormSchemaAjv(): Ajv2020 {
   const ajv = new Ajv2020({
     allErrors: true,
     strict: false,
+    validateSchema: true,
     $data: true,
     validateFormats: true,
   });
@@ -157,6 +171,10 @@ function createAjvInstance(): Ajv2020 {
   ajv.addFormat('cnic', {
     type: 'string',
     validate: (val: string) => val === '' || isValidCNIC(val),
+  });
+  ajv.addFormat('postalCode', {
+    type: 'string',
+    validate: (val: string) => val === '' || isValidPostalCode(val),
   });
 
   // Register custom cross-field keywords directly on AJV 2020-12
@@ -302,7 +320,7 @@ export class ValidationEngine {
 
   constructor(config: FormConfig) {
     this.config = config;
-    this.ajv = createAjvInstance();
+    this.ajv = createFormSchemaAjv();
     this.schemaRequiredSet = new Set(config.schema?.required ?? []);
     this.compileSchema(config.schema);
   }
@@ -360,13 +378,15 @@ export class ValidationEngine {
     if (!schema) return;
 
     try {
-      // Strip $schema URI if it differs slightly from AJV's preloaded meta-schema id
-      const normalizedSchema: Record<string, unknown> = { ...schema };
-      if (
-        typeof normalizedSchema.$schema === 'string' &&
-        !normalizedSchema.$schema.includes('2020-12')
-      ) {
-        delete normalizedSchema.$schema;
+      const normalizedSchema = normalizeEmbeddedJsonSchema(
+        schema as Record<string, unknown>
+      );
+      const isMetaValid = this.ajv.validateSchema(normalizedSchema);
+      if (isMetaValid === false) {
+        this.schemaCompileError = this.ajv.errorsText(this.ajv.errors, {
+          dataVar: 'schema',
+        });
+        return;
       }
       this.compiledSchema = this.ajv.compile(normalizedSchema);
     } catch (err) {

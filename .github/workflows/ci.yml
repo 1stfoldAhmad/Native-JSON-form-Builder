@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, Test & Build (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install library dependencies
+        run: npm ci
+
+      - name: Install example app dependencies
+        working-directory: example
+        run: npm ci
+
+      - name: Typecheck library
+        run: npm run typecheck
+
+      - name: Typecheck example app
+        run: npm run typecheck:example
+
+      - name: Run unit, schema, security & native bridge contract tests
+        run: npm test
+
+      - name: Build distributable package
+        run: npm run build
+
+      - name: Verify npm package tarball contents
+        run: npm pack --dry-run

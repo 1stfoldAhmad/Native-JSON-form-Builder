@@ -57,7 +57,10 @@ npx expo install expo-image-picker expo-document-picker
 }
 ```
 
-> **Note:** `@expo/ui` requires a development build (`npx expo run:ios` / `npx expo run:android`) on native devices/simulators, and runs out of the box on Expo Web (`npx expo start --web`).
+### Running in Expo Go, Expo Web, or Development Builds
+
+- **Expo Go & Expo Web (SDK 58+)**: `@expo/ui` is included in **Expo Go** starting in Expo SDK 58, so you can run and preview native SwiftUI (iOS) and Jetpack Compose (Android) forms immediately with `npx expo start`, as well as in the browser with `npx expo start --web`.
+- **Development Builds (`npx expo run:ios` / `npx expo run:android` / EAS Build)**: Use a development build when preparing production App Store / Google Play builds, adding third-party native modules not bundled with Expo Go, or applying custom native `app.json` config plugin settings (such as custom camera/photo permission strings).
 
 ---
 
@@ -210,6 +213,33 @@ const generatedConfig = createFormBuilder('lead-capture')
 // const jsonFileContent = createFormBuilder('lead-capture')...toJsonString(2);
 
 <ExpoForm config={generatedConfig} onSubmit={handleSubmit} />;
+```
+
+### Important: Embedding Inside an Existing `@expo/ui` `<Host>` (`hostMode="inherit"`)
+
+By default (`hostMode="auto"`), `<ExpoForm />` mounts its own `@expo/ui` `<Host>` when rendered inside standard React Native views (`View`, `SafeAreaView`, screen roots) and automatically reuses any ancestor `ExpoForm`-managed `<Host>` via internal React context.
+
+However, because `@expo/ui`'s raw `<Host>` component does **not** expose a public React context, `<ExpoForm />` cannot automatically detect an **externally created** `<Host>`. Whenever you place `<ExpoForm />` directly inside your own `<Host>` tree (for example inside a custom SwiftUI/Compose screen shell or toolbar layout), pass **`hostMode="inherit"`** to prevent mounting a nested `<Host>`:
+
+```tsx
+import { Column, Host, Text } from '@expo/ui';
+import { ExpoForm } from 'native-json-form-builder';
+import myForm from './my-form.json';
+
+export function NativeScreenWithSharedHost() {
+  return (
+    <Host style={{ flex: 1 }}>
+      <Column spacing={16}>
+        <Text>Account Setup</Text>
+        <ExpoForm
+          hostMode="inherit"
+          config={myForm}
+          onSubmit={handleSubmit}
+        />
+      </Column>
+    </Host>
+  );
+}
 ```
 
 ---

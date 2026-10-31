@@ -1,23 +1,47 @@
 /**
  * Deep dot-path helpers for nested `objectGroup`, `arrayGroup`, and `repeater` values.
+ * Includes prototype-pollution guards for untrusted/remote `form.json` configurations.
  */
 
-export function splitPath(path: string): string[] {
+const UNSAFE_PATH_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor']);
+
+export function isUnsafePathSegment(segment: string): boolean {
+  return UNSAFE_PATH_SEGMENTS.has(segment);
+}
+
+export function hasUnsafePathSegment(path: string | undefined): boolean {
+  if (!path) return false;
+  if (UNSAFE_PATH_SEGMENTS.has(path)) return true;
   return path
     .replace(/\[(\d+)\]/g, '.$1')
     .split('.')
+    .filter(Boolean)
+    .some((seg) => UNSAFE_PATH_SEGMENTS.has(seg));
+}
+
+export function splitPath(path: string): string[] {
+  const segments = path
+    .replace(/\[(\d+)\]/g, '.$1')
+    .split('.')
     .filter(Boolean);
+  if (segments.some((seg) => UNSAFE_PATH_SEGMENTS.has(seg))) {
+    return [];
+  }
+  return segments;
 }
 
 export function getByPath(source: unknown, path: string | undefined): unknown {
   if (!path || source == null || typeof source !== 'object') return undefined;
+  if (hasUnsafePathSegment(path)) return undefined;
   if (Object.prototype.hasOwnProperty.call(source, path)) {
     return (source as Record<string, unknown>)[path];
   }
   const segments = splitPath(path);
+  if (segments.length === 0) return undefined;
   let cursor: unknown = source;
   for (const key of segments) {
     if (cursor == null || typeof cursor !== 'object') return undefined;
+    if (!Object.prototype.hasOwnProperty.call(cursor, key)) return undefined;
     cursor = (cursor as Record<string, unknown>)[key];
   }
   return cursor;
@@ -28,13 +52,18 @@ export function setByPath<T extends Record<string, unknown>>(
   path: string,
   value: unknown
 ): T {
+  if (hasUnsafePathSegment(path)) return target;
   const segments = splitPath(path);
   if (segments.length === 0) return target;
   if (segments.length === 1) {
-    return {
-      ...target,
-      [segments[0]]: value,
-    };
+    const out: Record<string, unknown> = { ...target };
+    Object.defineProperty(out, segments[0], {
+      value,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
+    return out as T;
   }
 
   const clone: Record<string, unknown> = Array.isArray(target)
@@ -46,7 +75,9 @@ export function setByPath<T extends Record<string, unknown>>(
     const key = segments[i];
     const nextKey = segments[i + 1];
     const nextIsIndex = /^\d+$/.test(nextKey);
-    const existing = cursor[key];
+    const existing = Object.prototype.hasOwnProperty.call(cursor, key)
+      ? cursor[key]
+      : undefined;
 
     let nextContainer: unknown;
     if (Array.isArray(existing)) {
@@ -105,6 +136,7 @@ export function deepClone<T>(value: T): T {
   if (Array.isArray(value)) return value.map((item) => deepClone(item)) as unknown as T;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (UNSAFE_PATH_SEGMENTS.has(k)) continue;
     out[k] = deepClone(v);
   }
   return out as T;

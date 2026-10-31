@@ -227,6 +227,14 @@ export function ExpoForm<TValues extends FormValues = FormValues>({
   ]);
 
   // Apply external server errors whenever `serverErrors` prop changes
+  // Cancel debounced timers and in-flight async validations on unmount
+  useEffect(() => {
+    return () => {
+      store.dispose();
+    };
+  }, [store]);
+
+  // Apply external server errors whenever `serverErrors` prop changes
   useEffect(() => {
     if (serverErrors && Object.keys(serverErrors).length > 0) {
       store.setServerErrors(serverErrors);

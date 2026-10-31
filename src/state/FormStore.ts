@@ -189,6 +189,7 @@ export class FormStore {
   private submitCount = 0;
   private submitStatus: FormSubmitStatus = 'idle';
   private isSubmitting = false;
+  private isAdvancingStep = false;
   private submitEpoch = 0;
   private currentStepIndex = 0;
 
@@ -447,28 +448,44 @@ export class FormStore {
       }
     }, debounceMs);
 
+    const applyRestoredDraft = (raw: string | null | undefined) => {
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+      const sanitized =
+        draftCfg.excludeSensitive === false &&
+        this.config.security?.protectSensitiveFields === false
+          ? (parsed as FormValues)
+          : omitSensitiveValues(parsed as FormValues, this.sensitivePaths);
+      this.setValues(sanitized, { shouldValidate: false });
+    };
+
     // Restore persisted draft if available (synchronously if sync storage, else async)
     try {
       const maybeRaw = this.storageAdapter.getItem(key);
       if (typeof maybeRaw === 'string') {
-        const parsed = JSON.parse(maybeRaw) as FormValues;
-        if (parsed && typeof parsed === 'object') {
-          this.setValues(parsed, { shouldValidate: false });
-        }
+        applyRestoredDraft(maybeRaw);
       } else if (maybeRaw && typeof (maybeRaw as PromiseLike<string | null>).then === 'function') {
+        const restoreEpoch = this.formValidationEpoch;
         void Promise.resolve(maybeRaw)
           .then((raw) => {
-            if (!raw) return;
-            const parsed = JSON.parse(raw) as FormValues;
-            if (parsed && typeof parsed === 'object') {
-              this.setValues(parsed, { shouldValidate: false });
-            }
+            if (this.formValidationEpoch !== restoreEpoch) return;
+            applyRestoredDraft(raw);
           })
           .catch(() => {});
       }
     } catch {
       // Ignore storage read errors
     }
+  }
+
+  public dispose(): void {
+    this.fieldValidateDebouncers.forEach((d) => d.cancel());
+    this.fieldValidateDebouncers.clear();
+    this.draftSaveDebouncer?.cancel();
+    this.validationEngine.abortAsyncValidation();
+    this.isSubmitting = false;
+    this.isAdvancingStep = false;
   }
 
   public async clearDraft(): Promise<void> {
@@ -1201,53 +1218,81 @@ export class FormStore {
   }
 
   public async nextStep(): Promise<boolean> {
+    if (this.isAdvancingStep || this.isSubmitting) return false;
     const steps = this.getVisibleSteps();
     if (steps.length === 0 || this.currentStepIndex >= steps.length - 1) return false;
 
-    const currentStep = steps[this.currentStepIndex];
-    if (currentStep.validateBeforeNext !== false) {
-      const stepFieldPaths: string[] = [];
-      const collect = (fields: readonly FieldConfig[], prefix = '') => {
-        for (const f of fields) {
-          const p = f.name ? (prefix ? `${prefix}.${f.name}` : f.name) : prefix;
-          if (f.name && isFieldVisible(f, this.values)) {
-            stepFieldPaths.push(p);
-            this.touchedFields[p] = true;
+    this.isAdvancingStep = true;
+    const myEpoch = this.formValidationEpoch;
+
+    try {
+      const currentStep = steps[this.currentStepIndex];
+      if (currentStep.validateBeforeNext !== false) {
+        const stepDescriptors = collectActiveFields(
+          { id: this.config.id, fields: currentStep.fields },
+          this.values
+        );
+        const stepFieldPaths = stepDescriptors
+          .filter((d) => d.parentVisible)
+          .map((d) => d.path);
+
+        for (const p of stepFieldPaths) {
+          this.touchedFields[p] = true;
+        }
+
+        const startVersions: Record<string, number> = {};
+        for (const p of stepFieldPaths) {
+          startVersions[p] = this.fieldValueVersion[p] ?? 0;
+        }
+
+        const res = await this.validationEngine.validateAsync(
+          deepClone(this.values),
+          this.asyncValidators,
+          {
+            onlyFields: stepFieldPaths,
+            trigger: 'onSubmit',
+            locale: this.locale,
+            isFieldStale: (p, validatedValue) =>
+              this.formValidationEpoch !== myEpoch ||
+              (this.fieldValueVersion[p] ?? 0) !== (startVersions[p] ?? 0) ||
+              !deepEqual(getByPath(this.values, p), validatedValue),
           }
-          if (f.fields) collect(f.fields, f.type === 'objectGroup' && f.name ? p : prefix);
-        }
-      };
-      collect(currentStep.fields);
+        );
 
-      const res = await this.validationEngine.validateAsync(
-        this.values,
-        this.asyncValidators,
-        {
-          onlyFields: stepFieldPaths,
-          trigger: 'onSubmit',
-          locale: this.locale,
+        if (this.formValidationEpoch !== myEpoch) {
+          return false;
         }
-      );
 
-      for (const p of stepFieldPaths) {
-        if (res.errors[p]) this.errors[p] = res.errors[p];
-        else delete this.errors[p];
+        for (const p of stepFieldPaths) {
+          if ((this.fieldValueVersion[p] ?? 0) !== (startVersions[p] ?? 0)) continue;
+          if (res.errors[p]) this.errors[p] = res.errors[p];
+          else delete this.errors[p];
+        }
+        this.notifyPaths(stepFieldPaths);
+
+        if (!res.valid) {
+          if (res.firstErrorField) {
+            this.handleInvalidFocusAndScroll(
+              res.firstErrorField,
+              res.errors[res.firstErrorField]
+            );
+          }
+          return false;
+        }
       }
-      this.notifyPaths(stepFieldPaths);
 
-      if (!res.valid) {
-        if (res.firstErrorField) {
-          this.handleInvalidFocusAndScroll(res.firstErrorField, res.errors[res.firstErrorField]);
-        }
-        return false;
+      const freshSteps = this.getVisibleSteps();
+      if (this.currentStepIndex >= freshSteps.length - 1) return false;
+      this.currentStepIndex += 1;
+      const next = freshSteps[this.currentStepIndex];
+      this.bumpAndNotifyAll();
+      this.callbacks.onStepChange?.(this.currentStepIndex, next.id);
+      return true;
+    } finally {
+      if (this.formValidationEpoch === myEpoch) {
+        this.isAdvancingStep = false;
       }
     }
-
-    this.currentStepIndex += 1;
-    const next = steps[this.currentStepIndex];
-    this.bumpAndNotifyAll();
-    this.callbacks.onStepChange?.(this.currentStepIndex, next.id);
-    return true;
   }
 
   public previousStep(): void {
@@ -1417,6 +1462,7 @@ export class FormStore {
     this.formValidationEpoch += 1;
     this.submitEpoch += 1;
     this.isSubmitting = false;
+    this.isAdvancingStep = false;
 
     let base = nextInitialValues
       ? buildInitialFormValues(this.config, nextInitialValues)
