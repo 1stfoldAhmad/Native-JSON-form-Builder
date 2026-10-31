@@ -157,11 +157,29 @@ export {
 export { applyMask, stripMask, MASK_PRESETS } from './utils/masking';
 export {
   formatNumberValue,
+  parseNumericInput,
+  normalizeLocalizedNumerals,
+  resolvePluralizedText,
   formatFileSize,
   calculateAgeInYears,
   resolveLocalizedText,
   isRTLLocale,
 } from './utils/formatting';
+export { resolveResponsiveColumnCount } from './renderer/FormRenderer';
+export {
+  PlatformCapabilityRegistry,
+  defaultCapabilityRegistry,
+  type BarcodeScanResult,
+  type BarcodeScannerAdapter,
+  type DocumentScannerAdapter,
+  type DrawnSignatureResult,
+  type GeoCoordinatesResult,
+  type LocationCaptureAdapter,
+  type ScannedDocumentResult,
+  type SignatureCaptureAdapter,
+  type CapabilityCheckIssue,
+  type SchemaCapabilityReport,
+} from './capabilities';
 export {
   BUILT_IN_SECRET_FIELD_TYPES,
   isBuiltInSecretFieldType,

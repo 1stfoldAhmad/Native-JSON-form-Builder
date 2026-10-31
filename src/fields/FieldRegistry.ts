@@ -4,6 +4,7 @@ import type {
   FieldRegistrationEntry,
 } from '../types';
 import { AddressLocationFieldRenderer } from './AddressLocationFields';
+import { BarcodeScannerFieldRenderer } from './BarcodeScannerField';
 import { DateTimeFieldRenderer } from './DateTimeFields';
 import { FileUploadFieldRenderer } from './FileUploadFields';
 import { NumericFieldRenderer } from './NumericFields';
@@ -373,6 +374,21 @@ export function createDefaultFieldRegistry(): FieldRegistry {
     type: 'cvv',
     component: NumericFieldRenderer,
     category: 'numeric',
+  });
+  registry.register({
+    type: 'barcode',
+    component: BarcodeScannerFieldRenderer,
+    category: 'text',
+  });
+  registry.register({
+    type: 'qrCode',
+    component: BarcodeScannerFieldRenderer,
+    category: 'text',
+  });
+  registry.register({
+    type: 'documentScan',
+    component: FileUploadFieldRenderer,
+    category: 'upload',
   });
 
   return registry;

@@ -10,6 +10,7 @@ import {
   useNativeState,
 } from '@expo/ui';
 
+import { defaultCapabilityRegistry } from '../capabilities/PlatformCapabilityRegistry';
 import { useActiveForm } from '../core/context';
 import { FormIcon, NativeIconButton } from '../icons/IconRenderer';
 import type { FieldRendererProps, FormFileAsset } from '../types';
@@ -157,10 +158,61 @@ function StandardUploadFieldRenderer({
               ? 'Select Files'
               : 'Choose File');
 
+  const docScannerAdapter = defaultCapabilityRegistry.getDocumentScannerAdapter();
+  const showDocScannerBtn =
+    Boolean(docScannerAdapter) &&
+    (field.type === 'documentScan' || field.type === 'document' || field.type === 'pdf');
+
+  const handleScanDocument = async () => {
+    if (!docScannerAdapter || disabled || readOnly || busy) return;
+    setBusy(true);
+    try {
+      const scanRes = await docScannerAdapter.scanDocument({
+        maxPages: constraints.multiple ? constraints.maxFiles : 1,
+        outputFormat: field.type === 'pdf' ? 'pdf' : undefined,
+      });
+      if (!scanRes) return;
+      const incoming = scanRes.mergedPdf ? [scanRes.mergedPdf] : scanRes.pages;
+      if (incoming.length === 0) return;
+
+      const existingCount = constraints.multiple ? currentFiles.length : 0;
+      const { accepted, errors } = validateSelectedFiles(incoming, existingCount, constraints);
+      if (errors.length > 0) {
+        store.setError(fieldPath, errors[0]);
+      } else {
+        store.clearErrors(fieldPath);
+      }
+      if (accepted.length > 0) {
+        const nextList = constraints.multiple ? [...currentFiles, ...accepted] : [accepted[0]];
+        store.setFieldFiles(fieldPath, nextList, constraints.multiple);
+        await runUploadActionIfConfigured(nextList);
+      }
+    } catch (err) {
+      store.setError(fieldPath, err instanceof Error ? err.message : 'Document scan failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Column spacing={10} style={{ width: '100%' }}>
       {!readOnly && canAddMore ? (
         <Row spacing={8} alignment="center" style={{ width: '100%' }}>
+          {showDocScannerBtn ? (
+            <Button
+              variant="filled"
+              disabled={disabled || busy}
+              testID={`upload-docscan-${fieldPath}`}
+              onPress={() => void handleScanDocument()}
+              style={{ height: 44, borderRadius: 10, paddingHorizontal: 14 }}>
+              <Row spacing={6} alignment="center">
+                <FormIcon name="document" size={18} color="#FFFFFF" renderOverride={renderIcon} />
+                <Text textStyle={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }}>
+                  {busy ? 'Scanning...' : 'Scan Document'}
+                </Text>
+              </Row>
+            </Button>
+          ) : null}
           {constraints.sources.includes('camera') ? (
             <Button
               variant={constraints.sources.length === 1 ? 'filled' : 'outlined'}
@@ -345,6 +397,41 @@ function SignatureFieldRenderer({
     setSheetOpen(false);
   };
 
+  const signatureAdapter = defaultCapabilityRegistry.getSignatureAdapter();
+
+  const handleOpenSignature = async () => {
+    if (disabled || readOnly) return;
+    if (signatureAdapter) {
+      try {
+        const drawn = await signatureAdapter.captureSignature({
+          penColor: styles.inputTextStyle.color,
+        });
+        if (drawn?.uri) {
+          const drawnAsset: FormFileAsset = {
+            id: `sig_drawn_${Date.now()}`,
+            name: drawn.mimeType === 'image/png' ? 'signature-drawn.png' : 'signature-drawn.svg',
+            uri: drawn.uri,
+            mimeType: drawn.mimeType,
+            size: drawn.uri.length,
+            width: drawn.width,
+            height: drawn.height,
+            source: 'signature',
+            status: 'selected',
+          };
+          store.setFieldFiles(fieldPath, [drawnAsset], false);
+          return;
+        }
+      } catch (err) {
+        store.setError(
+          fieldPath,
+          err instanceof Error ? err.message : 'Native signature capture failed'
+        );
+        return;
+      }
+    }
+    setSheetOpen(true);
+  };
+
   return (
     <Column spacing={8} style={{ width: '100%' }}>
       {asset ? (
@@ -362,7 +449,7 @@ function SignatureFieldRenderer({
               fontSize: 18,
               fontWeight: '600',
             }}>
-            {`Signed: ${asset.name.replace(/^signature-|\.svg$/g, '')}`}
+            {`Signed: ${asset.name.replace(/^signature-|\.(svg|png)$/g, '')}`}
           </Text>
           <Spacer flexible />
           {!disabled && !readOnly ? (
@@ -382,7 +469,7 @@ function SignatureFieldRenderer({
           variant="outlined"
           disabled={disabled || readOnly}
           testID={field.testID ?? `signature-open-${fieldPath}`}
-          onPress={() => setSheetOpen(true)}
+          onPress={() => void handleOpenSignature()}
           style={{ ...styles.inputStyle, height: 52 }}>
           <Row spacing={8} alignment="center">
             <FormIcon name="edit" size={18} color={styles.iconColor} renderOverride={renderIcon} />

@@ -14,7 +14,7 @@ import {
 } from '../keyboard/KeyboardLayoutAdapter';
 import { useFormSelector } from '../state/useFormSelector';
 import { resolveFormStyles } from '../styles/StyleResolver';
-import type { ConfigSchemaIssue, FieldConfig } from '../types';
+import type { ConfigSchemaIssue, FieldConfig, FormLayoutConfig } from '../types';
 import { resolveLocalizedText } from '../utils/formatting';
 import { FieldNodeRenderer } from './FieldNodeRenderer';
 import { FieldRenderDelegateContext, type FieldListRenderOptions } from './renderDelegate';
@@ -29,6 +29,23 @@ export interface FormRendererProps {
   configIssues?: readonly ConfigSchemaIssue[];
   testID?: string;
   onBindScrollHandle?: (handle: KeyboardScrollHandle | null) => void;
+}
+
+export function resolveResponsiveColumnCount(
+  viewportWidth: number,
+  layout?: FormLayoutConfig
+): number {
+  const baseCols = Math.max(1, layout?.columns ?? 1);
+  const tabletBp = layout?.tabletBreakpoint ?? 768;
+  const desktopBp = layout?.desktopBreakpoint ?? 1024;
+
+  if (viewportWidth >= desktopBp) {
+    return Math.max(1, layout?.desktopColumns ?? layout?.tabletColumns ?? baseCols);
+  }
+  if (viewportWidth >= tabletBp) {
+    return Math.max(1, layout?.tabletColumns ?? baseCols);
+  }
+  return baseCols;
 }
 
 /**
@@ -64,11 +81,10 @@ export function FormRenderer({
     [config.style, config.theme, colorScheme, isRTL]
   );
 
-  const tabletBreakpoint = config.layout?.tabletBreakpoint ?? 768;
-  const isTablet = (dimensions?.width ?? 390) >= tabletBreakpoint;
-  const activeColumns = isTablet
-    ? (config.layout?.tabletColumns ?? config.layout?.columns ?? 1)
-    : (config.layout?.columns ?? 1);
+  const activeColumns = resolveResponsiveColumnCount(
+    dimensions?.width ?? 390,
+    config.layout
+  );
 
   const rowGap = config.layout?.rowGap ?? formStyles.formGap;
   const columnGap = config.layout?.columnGap ?? 12;
