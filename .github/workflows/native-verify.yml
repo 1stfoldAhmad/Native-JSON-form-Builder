@@ -1,0 +1,93 @@
+name: Native & Bundle Verification
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'example/**'
+      - 'forms/**'
+      - 'package*.json'
+      - '.github/workflows/native-verify.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'example/**'
+      - 'forms/**'
+      - 'package*.json'
+      - '.github/workflows/native-verify.yml'
+  workflow_dispatch:
+    inputs:
+      run_maestro_ios:
+        description: 'Build iOS Simulator app and run Maestro native E2E flows'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: native-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  metro-and-prebuild:
+    name: Metro Bundle & Native iOS/Android Prebuild
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install root & example dependencies
+        run: |
+          npm ci
+          cd example && npm ci
+
+      - name: Build library package
+        run: npm run build
+
+      - name: Verify Metro production bundle export (example)
+        working-directory: example
+        run: npx expo export --platform web
+
+      - name: Verify native Android & iOS project generation (expo prebuild)
+        working-directory: example
+        env:
+          CI: '1'
+        run: npx expo prebuild --no-install --platform all
+
+  maestro-ios-simulator:
+    name: Maestro Native SwiftUI E2E (iOS Simulator)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_maestro_ios == true }}
+    runs-on: macos-15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies & build library
+        run: |
+          npm ci
+          npm run build
+          cd example && npm ci
+
+      - name: Build & install on iOS Simulator
+        working-directory: example
+        run: npx expo run:ios --configuration Release --no-bundler
+
+      - name: Install Maestro CLI & run native flows
+        working-directory: example
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          export PATH="$PATH:$HOME/.maestro/bin"
+          maestro test .maestro/smoke-forms.yaml

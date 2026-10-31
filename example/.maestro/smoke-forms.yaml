@@ -1,0 +1,22 @@
+appId: com.firstfold.expoformdemo
+---
+# Native SwiftUI (iOS) & Jetpack Compose (Android) E2E Smoke Flow
+# Verifies Host mounting, native TextInput state, validation scrolling, and submission.
+- launchApp:
+    clearState: true
+
+- assertVisible: "Sign In"
+
+# Trigger validation failure on empty submit to verify native error display & scroll anchor
+- tapOn:
+    id: "expo-form-submit-button"
+
+# Navigate via deep link to Registration (88-type showcase) and Custom Studio
+- openLink: "expo-form-demo:///register"
+- assertVisible: "Create Your Account"
+
+- openLink: "expo-form-demo:///kyc-wizard"
+- assertVisible: "Merchant KYC Verification"
+
+- openLink: "expo-form-demo:///custom-builder"
+- assertVisible: "Custom form.json Studio"

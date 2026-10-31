@@ -1,8 +1,10 @@
-import Ajv2020 from 'ajv/dist/2020';
-import addFormats from 'ajv-formats';
-
 import { ALL_BUILT_IN_FIELD_TYPES } from '../fields/FieldRegistry';
 import type { ConfigSchemaIssue, FieldConfig, FormConfig } from '../types';
+import { hasUnsafePathSegment } from '../utils/deepPath';
+import {
+  createFormSchemaAjv,
+  normalizeEmbeddedJsonSchema,
+} from '../validation/ValidationEngine';
 
 const STRUCTURAL_TYPES_WITHOUT_NAME = new Set([
   'heading',
@@ -155,7 +157,7 @@ export function parseAndValidateFormConfig(
     });
   }
 
-  // Validate embedded JSON Schema 2020-12 if provided
+  // Validate embedded JSON Schema 2020-12 (including full meta-schema validation) if provided
   if (candidate.schema !== undefined) {
     if (!candidate.schema || typeof candidate.schema !== 'object' || Array.isArray(candidate.schema)) {
       issues.push({
@@ -165,13 +167,37 @@ export function parseAndValidateFormConfig(
       });
     } else {
       try {
-        const ajv = new Ajv2020({ strict: false, validateSchema: false });
-        addFormats(ajv);
-        ajv.compile(candidate.schema as Record<string, unknown>);
+        const ajv = createFormSchemaAjv();
+        const normalizedSchema = normalizeEmbeddedJsonSchema(
+          candidate.schema as Record<string, unknown>
+        );
+        const metaValid = ajv.validateSchema(normalizedSchema);
+        if (metaValid === false) {
+          issues.push({
+            path: 'config.schema',
+            message: `Invalid JSON Schema in "config.schema": ${ajv.errorsText(ajv.errors, { dataVar: 'schema' })}`,
+            severity: 'error',
+          });
+        } else {
+          ajv.compile(normalizedSchema);
+        }
       } catch (err) {
         issues.push({
           path: 'config.schema',
           message: `Invalid JSON Schema in "config.schema": ${err instanceof Error ? err.message : 'compilation failed'}`,
+          severity: 'error',
+        });
+      }
+    }
+  }
+
+  // Reject prototype-polluting keys in `defaults`
+  if (candidate.defaults && typeof candidate.defaults === 'object' && !Array.isArray(candidate.defaults)) {
+    for (const defaultKey of Object.keys(candidate.defaults)) {
+      if (hasUnsafePathSegment(defaultKey)) {
+        issues.push({
+          path: `config.defaults.${defaultKey}`,
+          message: `Unsafe reserved key "${defaultKey}" is not permitted in form defaults.`,
           severity: 'error',
         });
       }
@@ -264,6 +290,12 @@ export function parseAndValidateFormConfig(
         issues.push({
           path: `${itemPath}.name`,
           message: `Input field of type "${field.type}" requires a non-empty string "name".`,
+          severity: 'error',
+        });
+      } else if (field.name && hasUnsafePathSegment(field.name)) {
+        issues.push({
+          path: `${itemPath}.name`,
+          message: `Unsafe reserved property segment in field name "${field.name}" (__proto__, prototype, constructor are forbidden).`,
           severity: 'error',
         });
       }

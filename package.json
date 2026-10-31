@@ -8,6 +8,7 @@
   "types": "./dist/index.d.ts",
   "react-native": "./src/index.ts",
   "source": "./src/index.ts",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -44,6 +45,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:example": "tsc -p example/tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:native": "vitest run tests/native-platforms.test.tsx",
     "test:watch": "vitest",
     "prepack": "npm run build"
   },

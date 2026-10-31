@@ -98,10 +98,17 @@ export function resolveUploadConstraints(
   };
 }
 
-function matchesMimeType(fileMime: string, allowedMimes: readonly string[]): boolean {
+function matchesMimeType(
+  fileMime: string,
+  allowedMimes: readonly string[],
+  hasExtensionFallback = false
+): boolean {
   if (allowedMimes.length === 0 || allowedMimes.includes('*/*')) return true;
-  const normalized = (fileMime || '').toLowerCase();
-  if (!normalized) return true; // Defer to extension check if OS omitted MIME
+  const normalized = (fileMime || '').trim().toLowerCase();
+  if (!normalized) {
+    // Only defer to extension check when an extension is present and extension whitelist is configured
+    return hasExtensionFallback;
+  }
 
   return allowedMimes.some((pattern) => {
     const p = pattern.toLowerCase();
@@ -162,23 +169,48 @@ export function validateSelectedFiles(
   for (const asset of candidates) {
     if (accepted.length >= availableSlots) break;
 
-    const ext = asset.extension ?? extractExtension(asset.name);
+    const rawExt = asset.extension ?? extractExtension(asset.name);
+    const ext = rawExt
+      ? rawExt.startsWith('.')
+        ? rawExt.toLowerCase()
+        : `.${rawExt.toLowerCase()}`
+      : '';
+    const hasExplicitMime = Boolean(asset.mimeType && asset.mimeType.trim());
+    const hasSpecificMimeWhitelist =
+      constraints.allowedMimeTypes.length > 0 &&
+      !constraints.allowedMimeTypes.includes('*/*');
 
-    if (!matchesMimeType(asset.mimeType, constraints.allowedMimeTypes)) {
+    if (
+      !matchesMimeType(
+        asset.mimeType,
+        constraints.allowedMimeTypes,
+        constraints.allowedExtensions.length > 0 && Boolean(ext)
+      )
+    ) {
       errors.push(
         `"${asset.name}" has unsupported file type (${asset.mimeType || 'unknown'}).`
       );
       continue;
     }
 
-    if (
-      constraints.allowedExtensions.length > 0 &&
-      ext &&
-      !constraints.allowedExtensions.includes(ext)
-    ) {
-      errors.push(
-        `"${asset.name}" must be one of: ${constraints.allowedExtensions.join(', ')}.`
-      );
+    if (constraints.allowedExtensions.length > 0) {
+      if (ext) {
+        if (!constraints.allowedExtensions.includes(ext)) {
+          errors.push(
+            `"${asset.name}" must be one of: ${constraints.allowedExtensions.join(', ')}.`
+          );
+          continue;
+        }
+      } else if (!(hasExplicitMime && hasSpecificMimeWhitelist)) {
+        errors.push(
+          `"${asset.name}" is missing a valid extension (${constraints.allowedExtensions.join(', ')}).`
+        );
+        continue;
+      }
+    }
+
+    if (typeof asset.size === 'number' && (Number.isNaN(asset.size) || asset.size < 0)) {
+      errors.push(`"${asset.name}" reported an invalid file size.`);
       continue;
     }
 
@@ -195,7 +227,8 @@ export function validateSelectedFiles(
 
     if (
       constraints.minFileSize !== undefined &&
-      asset.size > 0 &&
+      typeof asset.size === 'number' &&
+      asset.size >= 0 &&
       asset.size < constraints.minFileSize
     ) {
       errors.push(
