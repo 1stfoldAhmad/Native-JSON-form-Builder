@@ -32,6 +32,18 @@ import {
   VALIDATION_PATTERNS,
 } from './patterns';
 
+/**
+ * Declarative client-side & shared JSON Schema / rule validation engine.
+ *
+ * Security boundary note:
+ * Client-side validation, conditional visibility (`visibleWhen` / `hiddenWhen`),
+ * read-only flags, and `permissions` role gates exist for responsive native UX —
+ * they are NEVER a substitute for server-side authorization or payload validation.
+ * Backends receiving form submissions MUST independently authenticate callers,
+ * enforce field-level RBAC/ABAC permissions, strip unauthorized fields, and
+ * re-validate submitted payloads (for example by running `ValidationEngine` or
+ * JSON Schema validation in a trusted Node/Edge runtime).
+ */
 export interface FlattenedFieldDescriptor {
   path: string;
   field: FieldConfig;

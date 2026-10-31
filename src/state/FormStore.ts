@@ -50,6 +50,7 @@ import {
 import { collectSensitiveFieldPaths, omitSensitiveValues } from '../utils/security';
 import { normalizeServerValidationErrors } from '../validation/AsyncValidationManager';
 import { collectActiveFields, ValidationEngine } from '../validation/ValidationEngine';
+import { PathSubscriptionIndex } from './PathSubscriptionIndex';
 
 export interface FormStoreCallbacks {
   onChange?: (values: FormValues, meta: { changedField: string; isDirty: boolean }) => void;
@@ -554,8 +555,9 @@ export class FormStore {
   private resetOnDepMap = new Map<string, Set<string>>();
   private computedFields: { path: string; field: FieldConfig }[] = [];
 
-  private pathListeners = new Map<string, Set<() => void>>();
+  private pathSubscriptionIndex = new PathSubscriptionIndex();
   private globalListeners = new Set<() => void>();
+  private lastNotifyBucketsInspected = 0;
   private batchDepth = 0;
   private pendingBatchPaths = new Set<string>();
   private pendingBatchNotifyAll = false;
@@ -1406,24 +1408,24 @@ export class FormStore {
       };
     }
 
-    for (const p of paths) {
-      if (!this.pathListeners.has(p)) {
-        this.pathListeners.set(p, new Set());
-      }
-      this.pathListeners.get(p)!.add(listener);
-    }
-
-    return () => {
-      for (const p of paths) {
-        this.pathListeners.get(p)?.delete(listener);
-      }
-    };
+    return this.pathSubscriptionIndex.subscribe(paths, listener);
   }
 
   public subscribeGlobal(listener: () => void): () => void {
     this.globalListeners.add(listener);
     return () => {
       this.globalListeners.delete(listener);
+    };
+  }
+
+  public getSubscriptionDiagnostics(): {
+    subscribedPathCount: number;
+    prefixBucketCount: number;
+    lastNotifyBucketsInspected: number;
+  } {
+    return {
+      ...this.pathSubscriptionIndex.getStats(),
+      lastNotifyBucketsInspected: this.lastNotifyBucketsInspected,
     };
   }
 
@@ -1439,37 +1441,26 @@ export class FormStore {
 
     this.snapshotVersion += 1;
     const toCall = new Set<() => void>();
+    let inspected = 0;
 
     for (const p of paths) {
-      const direct = this.pathListeners.get(p);
-      if (direct) {
-        for (const fn of direct) toCall.add(fn);
-      }
-      // Also notify subscribers watching parent object/array paths or child paths
-      for (const [watchedPath, listeners] of this.pathListeners.entries()) {
-        if (watchedPath.startsWith(`${p}.`) || p.startsWith(`${watchedPath}.`)) {
-          for (const fn of listeners) toCall.add(fn);
-        }
-      }
+      inspected += this.pathSubscriptionIndex.collectHierarchy(p, toCall);
+
       const dependents = this.reverseDependencyMap.get(p);
       if (dependents) {
         for (const depPath of dependents) {
-          const depListeners = this.pathListeners.get(depPath);
-          if (depListeners) {
-            for (const fn of depListeners) toCall.add(fn);
-          }
+          inspected += this.pathSubscriptionIndex.collectExact(depPath, toCall);
         }
       }
       const graphDependents = this.compiledPlan.graph.getDirectDependents(p);
       for (const depTpl of graphDependents) {
         for (const depPath of expandTargetTemplatePaths(depTpl, p, this.values)) {
-          const depListeners = this.pathListeners.get(depPath);
-          if (depListeners) {
-            for (const fn of depListeners) toCall.add(fn);
-          }
+          inspected += this.pathSubscriptionIndex.collectExact(depPath, toCall);
         }
       }
     }
+
+    this.lastNotifyBucketsInspected = inspected;
 
     for (const fn of this.globalListeners) {
       toCall.add(fn);
@@ -1487,9 +1478,7 @@ export class FormStore {
     }
     this.snapshotVersion += 1;
     const toCall = new Set<() => void>(this.globalListeners);
-    for (const set of this.pathListeners.values()) {
-      for (const fn of set) toCall.add(fn);
-    }
+    this.pathSubscriptionIndex.collectAll(toCall);
     for (const fn of toCall) fn();
   }
 

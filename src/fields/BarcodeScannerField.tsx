@@ -7,7 +7,7 @@ import { FormIcon } from '../icons/IconRenderer';
 import { useNativeTextState } from '../state/useNativeTextState';
 import type { FieldRendererProps } from '../types';
 import { resolveLocalizedText } from '../utils/formatting';
-import { compileSafeRegex } from '../utils/regexSafety';
+import { compileSafeRegex, MAX_REGEX_INPUT_LENGTH } from '../utils/regexSafety';
 
 /**
  * Native `@expo/ui` Barcode & QR Code input field (`type: 'barcode' | 'qrCode'`).
@@ -60,15 +60,27 @@ export function BarcodeScannerFieldRenderer({
 
     let extracted = rawCode.trim();
     if (field.scan?.extractPattern) {
-      const compiledRegex = compileSafeRegex(field.scan.extractPattern);
-      if (compiledRegex) {
-        const m = compiledRegex.exec(extracted);
-        if (!m) {
-          store.setError(fieldPath, 'Scanned code did not match expected format');
-          return;
-        }
-        extracted = m[1] ?? m[0];
+      if (extracted.length > MAX_REGEX_INPUT_LENGTH) {
+        store.setError(
+          fieldPath,
+          `Scanned code exceeds maximum safe pattern length (${MAX_REGEX_INPUT_LENGTH} characters)`
+        );
+        return;
       }
+      const compiledRegex = compileSafeRegex(field.scan.extractPattern);
+      if (!compiledRegex) {
+        store.setError(
+          fieldPath,
+          'Scan extraction pattern is invalid or unsafe to evaluate'
+        );
+        return;
+      }
+      const m = compiledRegex.exec(extracted);
+      if (!m) {
+        store.setError(fieldPath, 'Scanned code did not match expected format');
+        return;
+      }
+      extracted = m[1] ?? m[0];
     }
 
     if (field.scan?.preventDuplicates && seenCodesRef.current.has(extracted)) {

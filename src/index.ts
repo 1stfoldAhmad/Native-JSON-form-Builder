@@ -133,6 +133,7 @@ export {
 } from './conditions/evaluator';
 export { evaluateComputedField } from './conditions/computed';
 export { FormStore, buildInitialFormValues } from './state/FormStore';
+export { PathSubscriptionIndex } from './state/PathSubscriptionIndex';
 export { useFormSelector } from './state/useFormSelector';
 export { useNativeTextState } from './state/useNativeTextState';
 export { resolveFormStyles, resolveFieldStyles } from './styles/StyleResolver';
@@ -144,7 +145,19 @@ export {
 export {
   resolveUploadConstraints,
   validateSelectedFiles,
+  buildServerUploadPolicyManifest,
+  type ResolvedUploadConstraints,
+  type ServerUploadFieldPolicy,
+  type ServerUploadVerificationCheck,
 } from './uploads/UploadAdapter';
+export {
+  getByPath,
+  setByPath,
+  deleteByPath,
+  deepClone,
+  deepEqual,
+  hasUnsafePathSegment,
+} from './utils/deepPath';
 export {
   COUNTRIES,
   STATES_BY_COUNTRY,

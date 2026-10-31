@@ -271,7 +271,41 @@ export function parseAndValidateFormConfig(
     }
   };
 
+  const namedConditionsObj =
+    candidate.conditions &&
+    typeof candidate.conditions === 'object' &&
+    !Array.isArray(candidate.conditions)
+      ? (candidate.conditions as Record<string, unknown>)
+      : undefined;
+
   const validateCondition = (cond: unknown, condPath: string) => {
+    if (typeof cond === 'string') {
+      if (cond.startsWith('$condition:')) {
+        const refName = cond.slice('$condition:'.length).trim();
+        if (!refName) {
+          issues.push({
+            path: condPath,
+            message: 'Condition reference "$condition:" requires a non-empty condition name.',
+            severity: 'error',
+          });
+        } else if (!namedConditionsObj || !(refName in namedConditionsObj)) {
+          issues.push({
+            path: condPath,
+            message: `Referenced named condition "${refName}" is not defined in "config.conditions".`,
+            severity: 'warning',
+          });
+        }
+        return;
+      }
+      issues.push({
+        path: condPath,
+        message:
+          'Condition string must use "$condition:<name>" syntax or be a JSON object (e.g. { "field": "role", "equals": "admin" }).',
+        severity: 'error',
+      });
+      return;
+    }
+
     if (!cond || typeof cond !== 'object' || Array.isArray(cond)) {
       issues.push({
         path: condPath,
@@ -282,6 +316,22 @@ export function parseAndValidateFormConfig(
     }
 
     const obj = cond as Record<string, unknown>;
+    if (typeof obj.$condition === 'string') {
+      const refName = obj.$condition.trim();
+      if (!refName) {
+        issues.push({
+          path: `${condPath}.$condition`,
+          message: '"$condition" reference requires a non-empty condition name.',
+          severity: 'error',
+        });
+      } else if (!namedConditionsObj || !(refName in namedConditionsObj)) {
+        issues.push({
+          path: `${condPath}.$condition`,
+          message: `Referenced named condition "${refName}" is not defined in "config.conditions".`,
+          severity: 'warning',
+        });
+      }
+    }
     if (obj.matches !== undefined) {
       if (typeof obj.matches === 'string') {
         checkRegexSyntax(obj.matches, undefined, `${condPath}.matches`);
@@ -307,10 +357,16 @@ export function parseAndValidateFormConfig(
     if (Array.isArray(obj.or)) {
       obj.or.forEach((sub, i) => validateCondition(sub, `${condPath}.or[${i}]`));
     }
-    if (obj.not !== undefined && typeof obj.not === 'object' && obj.not !== null) {
+    if (obj.not !== undefined && obj.not !== null) {
       validateCondition(obj.not, `${condPath}.not`);
     }
   };
+
+  if (namedConditionsObj) {
+    for (const [condName, condDef] of Object.entries(namedConditionsObj)) {
+      validateCondition(condDef, `config.conditions.${condName}`);
+    }
+  }
 
   const validateFieldList = (fields: readonly FieldConfig[], basePath: string, prefix = '') => {
     fields.forEach((field, idx) => {
@@ -394,8 +450,13 @@ export function parseAndValidateFormConfig(
 
       // Check computed / calculated formula
       if (field.type === 'computed' || field.type === 'calculated') {
-        const hasFormulaExpr =
-          typeof field.formula === 'string' && field.formula.trim().length > 0;
+        const rawFormulaExpr =
+          typeof field.formula === 'string'
+            ? field.formula
+            : field.formula && typeof field.formula === 'object' && 'expression' in field.formula
+              ? String((field.formula as { expression?: unknown }).expression ?? '')
+              : '';
+        const hasFormulaExpr = rawFormulaExpr.trim().length > 0;
         if (!hasFormulaExpr) {
           if (!field.computed || typeof field.computed !== 'object' || !field.computed.operation) {
             issues.push({
@@ -414,14 +475,20 @@ export function parseAndValidateFormConfig(
       }
 
       if (field.formula !== undefined) {
-        if (typeof field.formula !== 'string' || !field.formula.trim()) {
+        const exprStr =
+          typeof field.formula === 'string'
+            ? field.formula
+            : field.formula && typeof field.formula === 'object' && 'expression' in field.formula
+              ? (field.formula as { expression?: unknown }).expression
+              : undefined;
+        if (typeof exprStr !== 'string' || !exprStr.trim()) {
           issues.push({
             path: `${itemPath}.formula`,
-            message: `Field "${field.name ?? idx}" "formula" must be a non-empty expression string.`,
+            message: `Field "${field.name ?? idx}" "formula" must be a non-empty expression string or { expression } object.`,
             severity: 'error',
           });
         } else {
-          const parsedFormula = parseFormula(field.formula);
+          const parsedFormula = parseFormula(exprStr);
           if (!parsedFormula.valid) {
             issues.push({
               path: `${itemPath}.formula`,
@@ -533,6 +600,14 @@ export function parseAndValidateFormConfig(
         );
       }
 
+      if (field.scan?.extractPattern !== undefined) {
+        checkRegexSyntax(
+          field.scan.extractPattern,
+          undefined,
+          `${itemPath}.scan.extractPattern`
+        );
+      }
+
       if (field.validation?.requiredWhen !== undefined) {
         validateCondition(field.validation.requiredWhen, `${itemPath}.validation.requiredWhen`);
       }
@@ -553,6 +628,15 @@ export function parseAndValidateFormConfig(
               message: 'Each step inside "stepGroup" must have a string "id".',
               severity: 'error',
             });
+          }
+          if (step.visibleWhen !== undefined) {
+            validateCondition(step.visibleWhen, `${itemPath}.steps[${sIdx}].visibleWhen`);
+          }
+          if (step.hiddenWhen !== undefined) {
+            validateCondition(step.hiddenWhen, `${itemPath}.steps[${sIdx}].hiddenWhen`);
+          }
+          if (step.skipWhen !== undefined) {
+            validateCondition(step.skipWhen, `${itemPath}.steps[${sIdx}].skipWhen`);
           }
           if (Array.isArray(step.fields)) {
             validateFieldList(step.fields, `${itemPath}.steps[${sIdx}].fields`, prefix);
@@ -582,6 +666,12 @@ export function parseAndValidateFormConfig(
           message: 'Each section must have a non-empty string "id".',
           severity: 'error',
         });
+      }
+      if (sec.visibleWhen !== undefined) {
+        validateCondition(sec.visibleWhen, `config.sections[${sIdx}].visibleWhen`);
+      }
+      if (sec.hiddenWhen !== undefined) {
+        validateCondition(sec.hiddenWhen, `config.sections[${sIdx}].hiddenWhen`);
       }
       if (!Array.isArray(sec.fields)) {
         issues.push({
@@ -627,6 +717,15 @@ export function parseAndValidateFormConfig(
           message: 'Each wizard step must have a non-empty string "id".',
           severity: 'error',
         });
+      }
+      if (step.visibleWhen !== undefined) {
+        validateCondition(step.visibleWhen, `config.steps[${sIdx}].visibleWhen`);
+      }
+      if (step.hiddenWhen !== undefined) {
+        validateCondition(step.hiddenWhen, `config.steps[${sIdx}].hiddenWhen`);
+      }
+      if (step.skipWhen !== undefined) {
+        validateCondition(step.skipWhen, `config.steps[${sIdx}].skipWhen`);
       }
       if (!Array.isArray(step.fields)) {
         issues.push({
