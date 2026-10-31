@@ -46,6 +46,11 @@ export interface FormStoreCallbacks {
   onStepChange?: (stepIndex: number, stepId: string) => void;
 }
 
+export interface ScrollToFieldOptions {
+  /** True when `FormStore` will immediately invoke the field's own native `.focus()` handle. */
+  willFocusField?: boolean;
+}
+
 export interface FormStoreInitOptions {
   config: FormConfig;
   initialValues?: FormValues;
@@ -57,7 +62,7 @@ export interface FormStoreInitOptions {
   locale?: string;
   disabled?: boolean;
   readOnly?: boolean;
-  onScrollToField?: (fieldName: string) => void;
+  onScrollToField?: (fieldName: string, options?: ScrollToFieldOptions) => void;
 }
 
 function defaultEmptyForField(field: FieldConfig): unknown {
@@ -167,7 +172,7 @@ export class FormStore {
   private actions?: Record<string, ActionHandler>;
   private calculators?: Record<string, ComputedCalculator>;
   private storageAdapter?: DraftStorageAdapter;
-  private onScrollToField?: (fieldName: string) => void;
+  private onScrollToField?: (fieldName: string, options?: ScrollToFieldOptions) => void;
   private locale: string;
   private formDisabled: boolean;
   private formReadOnly: boolean;
@@ -183,10 +188,18 @@ export class FormStore {
   private focusedField: string | null = null;
   private submitCount = 0;
   private submitStatus: FormSubmitStatus = 'idle';
+  private isSubmitting = false;
+  private submitEpoch = 0;
   private currentStepIndex = 0;
 
   /** Incremented ONLY on programmatic updates (`setValue`, `reset`, draft restore, computed) so native TextInputs never flicker during typing. */
   private externalValueVersion: Record<string, number> = {};
+  /** Incremented on EVERY value mutation (user typing, programmatic, reset, computed) to invalidate stale in-flight async validations. */
+  private fieldValueVersion: Record<string, number> = {};
+  /** Monotonic per-field async validation sequence token. */
+  private fieldValidationSeq: Record<string, number> = {};
+  /** Monotonic form-wide epoch bumped on `reset()` or `config.id` change to discard stale async validations. */
+  private formValidationEpoch = 0;
 
   private sensitivePaths: Set<string>;
   private allFieldsMap = new Map<string, FieldConfig>();
@@ -268,6 +281,10 @@ export class FormStore {
       this.indexFieldsAndDependencies();
 
       if (options.config.id !== prevId) {
+        this.formValidationEpoch += 1;
+        this.submitEpoch += 1;
+        this.isSubmitting = false;
+        this.validationEngine.abortAsyncValidation();
         const seeded = buildInitialFormValues(this.config, options.initialValues);
         this.values = seeded;
         this.errors = {};
@@ -275,6 +292,8 @@ export class FormStore {
         this.dirtyFields = {};
         this.touchedFields = {};
         this.validatingFields = {};
+        this.fieldValueVersion = {};
+        this.fieldValidationSeq = {};
         this.filesByField = {};
         this.currentStepIndex = 0;
         this.recomputeAllComputedFields(false);
@@ -554,8 +573,8 @@ export class FormStore {
   }
 
   public focusField(fieldPath: string): void {
-    this.onScrollToField?.(fieldPath);
     const handle = this.focusHandles.get(fieldPath);
+    this.onScrollToField?.(fieldPath, { willFocusField: Boolean(handle) });
     handle?.focus();
   }
 
@@ -741,19 +760,35 @@ export class FormStore {
     });
   }
 
+  private markFieldMutated(fieldPath: string): void {
+    this.fieldValueVersion[fieldPath] = (this.fieldValueVersion[fieldPath] ?? 0) + 1;
+    this.fieldValidationSeq[fieldPath] = (this.fieldValidationSeq[fieldPath] ?? 0) + 1;
+    this.validationEngine.abortAsyncValidation(fieldPath);
+    if (this.validatingFields[fieldPath]) {
+      this.validatingFields[fieldPath] = false;
+    }
+  }
+
   public setValues(
     partialValues: FormValues,
     options?: { shouldValidate?: boolean }
   ): void {
     const affected: string[] = [];
     for (const [path, val] of Object.entries(partialValues)) {
+      const prev = getByPath(this.values, path);
       this.values = setByPath(this.values, path, val);
       this.externalValueVersion[path] = (this.externalValueVersion[path] ?? 0) + 1;
+      if (!deepEqual(prev, val)) {
+        this.markFieldMutated(path);
+      }
       const initVal = getByPath(this.initialValues, path);
       this.dirtyFields[path] = !deepEqual(val, initVal);
       affected.push(path);
     }
     const computedChanged = this.recomputeAllComputedFields(false);
+    for (const cPath of computedChanged) {
+      this.markFieldMutated(cPath);
+    }
     affected.push(...computedChanged);
     this.notifyPaths(affected);
 
@@ -773,13 +808,17 @@ export class FormStore {
     }
   ): void {
     const prev = getByPath(this.values, fieldPath);
-    if (deepEqual(prev, value) && !opts.isProgrammatic) {
+    const valueChanged = !deepEqual(prev, value);
+    if (!valueChanged && !opts.isProgrammatic) {
       return;
     }
 
     this.values = setByPath(this.values, fieldPath, value);
     if (opts.isProgrammatic) {
       this.externalValueVersion[fieldPath] = (this.externalValueVersion[fieldPath] ?? 0) + 1;
+    }
+    if (valueChanged) {
+      this.markFieldMutated(fieldPath);
     }
 
     if (opts.shouldDirty !== false) {
@@ -794,7 +833,7 @@ export class FormStore {
 
     // Reset dependent selection fields (e.g. changing country clears state & city)
     const resetTargets = this.resetOnDepMap.get(fieldPath);
-    if (resetTargets && !deepEqual(prev, value)) {
+    if (resetTargets && valueChanged) {
       const queue = [...resetTargets];
       while (queue.length > 0) {
         const target = queue.shift()!;
@@ -803,6 +842,7 @@ export class FormStore {
         if (!deepEqual(getByPath(this.values, target), emptyVal)) {
           this.values = setByPath(this.values, target, emptyVal);
           this.externalValueVersion[target] = (this.externalValueVersion[target] ?? 0) + 1;
+          this.markFieldMutated(target);
           delete this.errors[target];
           affectedPaths.push(target);
           const nestedTargets = this.resetOnDepMap.get(target);
@@ -813,6 +853,9 @@ export class FormStore {
 
     // Recompute any computed fields
     const computedChanged = this.recomputeAllComputedFields(false);
+    for (const cPath of computedChanged) {
+      this.markFieldMutated(cPath);
+    }
     affectedPaths.push(...computedChanged);
 
     // Clear error when corrected if configured
@@ -991,23 +1034,50 @@ export class FormStore {
     trigger: 'onBlur' | 'onChange' | 'onSubmit' = 'onSubmit'
   ): Promise<ValidationResult> {
     const onlyFields = fieldPath ? [fieldPath] : undefined;
-
-    if (fieldPath && this.allFieldsMap.get(fieldPath)?.validation?.async) {
-      this.validatingFields[fieldPath] = true;
-      this.notifyPaths([fieldPath]);
-    }
-
-    const result = await this.validationEngine.validateAsync(
-      this.values,
-      this.asyncValidators,
-      {
-        onlyFields,
-        trigger,
-        locale: this.locale,
-      }
-    );
+    const myEpoch = this.formValidationEpoch;
+    const valuesSnapshot = deepClone(this.values);
 
     if (fieldPath) {
+      const startValueVer = this.fieldValueVersion[fieldPath] ?? 0;
+      const reqSeq = (this.fieldValidationSeq[fieldPath] =
+        (this.fieldValidationSeq[fieldPath] ?? 0) + 1);
+
+      if (this.allFieldsMap.get(fieldPath)?.validation?.async) {
+        this.validatingFields[fieldPath] = true;
+        this.notifyPaths([fieldPath]);
+      }
+
+      const result = await this.validationEngine.validateAsync(
+        valuesSnapshot,
+        this.asyncValidators,
+        {
+          onlyFields,
+          trigger,
+          locale: this.locale,
+          isFieldStale: (p, validatedValue) =>
+            this.formValidationEpoch !== myEpoch ||
+            (this.fieldValueVersion[p] ?? 0) !== startValueVer ||
+            !deepEqual(getByPath(this.values, p), validatedValue),
+        }
+      );
+
+      // Discard stale async results if the field value mutated, a newer validation started, or form reset
+      const isStale =
+        this.formValidationEpoch !== myEpoch ||
+        (this.fieldValueVersion[fieldPath] ?? 0) !== startValueVer ||
+        this.fieldValidationSeq[fieldPath] !== reqSeq;
+
+      if (isStale) {
+        if (this.fieldValidationSeq[fieldPath] === reqSeq && this.validatingFields[fieldPath]) {
+          this.validatingFields[fieldPath] = false;
+          this.notifyPaths([fieldPath]);
+        }
+        return this.validationEngine.validateSync(this.values, {
+          onlyFields: [fieldPath],
+          locale: this.locale,
+        });
+      }
+
       this.validatingFields[fieldPath] = false;
       if (result.errors[fieldPath]) {
         this.errors[fieldPath] = result.errors[fieldPath];
@@ -1015,15 +1085,92 @@ export class FormStore {
         delete this.errors[fieldPath];
       }
       this.notifyPaths([fieldPath]);
-    } else {
-      const prevKeys = Object.keys(this.errors);
-      this.errors = { ...result.errors };
-      this.formErrors = [...result.formErrors];
-      this.notifyPaths([...prevKeys, ...Object.keys(result.errors)]);
+      this.callbacks.onValidation?.(result);
+      return result;
     }
 
-    this.callbacks.onValidation?.(result);
-    return result;
+    // Full-form validation
+    const startFieldVersions: Record<string, number> = { ...this.fieldValueVersion };
+    const asyncFieldPaths: string[] = [];
+    const startSeqByField: Record<string, number> = {};
+
+    for (const d of collectActiveFields(this.config, valuesSnapshot)) {
+      if (d.parentVisible && d.field.validation?.async) {
+        asyncFieldPaths.push(d.path);
+        const seq = (this.fieldValidationSeq[d.path] =
+          (this.fieldValidationSeq[d.path] ?? 0) + 1);
+        startSeqByField[d.path] = seq;
+        this.validatingFields[d.path] = true;
+      }
+    }
+    if (asyncFieldPaths.length > 0) {
+      this.notifyPaths(asyncFieldPaths);
+    }
+
+    const result = await this.validationEngine.validateAsync(
+      valuesSnapshot,
+      this.asyncValidators,
+      {
+        onlyFields,
+        trigger,
+        locale: this.locale,
+        isFieldStale: (p, validatedValue) =>
+          this.formValidationEpoch !== myEpoch ||
+          (this.fieldValueVersion[p] ?? 0) !== (startFieldVersions[p] ?? 0) ||
+          !deepEqual(getByPath(this.values, p), validatedValue),
+      }
+    );
+
+    if (this.formValidationEpoch !== myEpoch) {
+      return this.validationEngine.validateSync(this.values, { locale: this.locale });
+    }
+
+    for (const p of asyncFieldPaths) {
+      if (this.fieldValidationSeq[p] === startSeqByField[p]) {
+        this.validatingFields[p] = false;
+      }
+    }
+
+    // If any field changed while full-form async validation was in flight, re-merge current sync state for mutated fields
+    const mutatedDuringAwait = Object.keys(this.fieldValueVersion).filter(
+      (p) => (this.fieldValueVersion[p] ?? 0) !== (startFieldVersions[p] ?? 0)
+    );
+
+    let finalResult = result;
+    if (mutatedDuringAwait.length > 0) {
+      const freshMutated = this.validationEngine.validateSync(this.values, {
+        onlyFields: mutatedDuringAwait,
+        locale: this.locale,
+      });
+      const mergedErrors = { ...result.errors };
+      const mergedDetails = { ...result.errorDetails };
+      for (const p of mutatedDuringAwait) {
+        if (freshMutated.errors[p]) {
+          mergedErrors[p] = freshMutated.errors[p];
+          mergedDetails[p] = freshMutated.errorDetails[p];
+        } else {
+          delete mergedErrors[p];
+          delete mergedDetails[p];
+        }
+      }
+      const firstErrorField =
+        Object.keys(mergedErrors)[0] ?? freshMutated.firstErrorField ?? undefined;
+      finalResult = {
+        valid: Object.keys(mergedErrors).length === 0 && result.formErrors.length === 0,
+        errors: mergedErrors,
+        errorDetails: mergedDetails,
+        formErrors: [...result.formErrors],
+        firstErrorField,
+      };
+    }
+
+    const prevKeys = Object.keys(this.errors);
+    this.errors = { ...finalResult.errors };
+    this.formErrors = [...finalResult.formErrors];
+    this.notifyPaths([...prevKeys, ...Object.keys(finalResult.errors), ...asyncFieldPaths]);
+
+    this.callbacks.onValidation?.(finalResult);
+    return finalResult;
   }
 
   private announceError(message: string): void {
@@ -1142,61 +1289,70 @@ export class FormStore {
       }
     }
 
+    const shouldFocus = this.config.validation?.focusFirstError !== false;
+    const focusHandle = shouldFocus ? this.focusHandles.get(firstField) : undefined;
+
     if (this.config.validation?.scrollToFirstError !== false) {
-      this.onScrollToField?.(firstField);
+      this.onScrollToField?.(firstField, { willFocusField: Boolean(focusHandle) });
     }
-    if (this.config.validation?.focusFirstError !== false) {
-      this.focusHandles.get(firstField)?.focus();
+    if (focusHandle) {
+      focusHandle.focus();
     }
   }
 
   public async submit(): Promise<boolean> {
     const preventDup = this.config.submit?.preventDuplicateSubmit ?? true;
-    if (preventDup && this.submitStatus === 'loading') {
+    if (preventDup && (this.isSubmitting || this.submitStatus === 'loading')) {
       return false;
     }
 
-    if (this.config.keyboard?.dismissOnSubmit !== false) {
-      Keyboard?.dismiss?.();
-    }
-
-    this.submitCount += 1;
-
-    // Mark all active fields as touched so error visibility rules display all errors
-    for (const d of collectActiveFields(this.config, this.values)) {
-      if (d.parentVisible) {
-        this.touchedFields[d.path] = true;
-      }
-    }
-
-    if (this.config.validation?.validateOnSubmit !== false) {
-      const result = await this.validate(undefined, 'onSubmit');
-      if (!result.valid) {
-        this.submitStatus = 'failure';
-        this.bumpAndNotifyAll();
-        if (result.firstErrorField) {
-          this.handleInvalidFocusAndScroll(
-            result.firstErrorField,
-            result.errors[result.firstErrorField]
-          );
-        }
-        this.callbacks.onInvalid?.(result.errors, result, this.getValues());
-        return false;
-      }
-    }
-
+    this.isSubmitting = true;
+    const mySubmitEpoch = ++this.submitEpoch;
     this.submitStatus = 'loading';
-    this.bumpAndNotifyAll();
-
-    const helpers: FormSubmitHelpers = {
-      reset: (nextVals) => this.reset(nextVals),
-      setError: (field, msg) => this.setError(field, msg),
-      setErrors: (errs, fErrs) => this.setServerErrors(errs, fErrs),
-      setServerErrors: (errs, fErrs) => this.setServerErrors(errs, fErrs),
-      setValue: (field, val) => this.setValue(field, val),
-    };
 
     try {
+      if (this.config.keyboard?.dismissOnSubmit !== false) {
+        Keyboard?.dismiss?.();
+      }
+
+      this.submitCount += 1;
+
+      // Mark all active fields as touched so error visibility rules display all errors
+      for (const d of collectActiveFields(this.config, this.values)) {
+        if (d.parentVisible) {
+          this.touchedFields[d.path] = true;
+        }
+      }
+
+      this.bumpAndNotifyAll();
+
+      if (this.config.validation?.validateOnSubmit !== false) {
+        const result = await this.validate(undefined, 'onSubmit');
+        if (this.submitEpoch !== mySubmitEpoch) {
+          return false;
+        }
+        if (!result.valid) {
+          this.submitStatus = 'failure';
+          this.bumpAndNotifyAll();
+          if (result.firstErrorField) {
+            this.handleInvalidFocusAndScroll(
+              result.firstErrorField,
+              result.errors[result.firstErrorField]
+            );
+          }
+          this.callbacks.onInvalid?.(result.errors, result, this.getValues());
+          return false;
+        }
+      }
+
+      const helpers: FormSubmitHelpers = {
+        reset: (nextVals) => this.reset(nextVals),
+        setError: (field, msg) => this.setError(field, msg),
+        setErrors: (errs, fErrs) => this.setServerErrors(errs, fErrs),
+        setServerErrors: (errs, fErrs) => this.setServerErrors(errs, fErrs),
+        setValue: (field, val) => this.setValue(field, val),
+      };
+
       const submitValues = this.getValues();
 
       // Invoke registered JSON action if specified
@@ -1214,10 +1370,16 @@ export class FormStore {
             setValue: helpers.setValue,
             setError: helpers.setError,
           });
+          if (this.submitEpoch !== mySubmitEpoch) {
+            return false;
+          }
         }
       }
 
       await this.callbacks.onSubmit?.(submitValues, helpers);
+      if (this.submitEpoch !== mySubmitEpoch) {
+        return false;
+      }
 
       if (Object.keys(this.errors).length > 0 || this.formErrors.length > 0) {
         this.submitStatus = 'failure';
@@ -1233,17 +1395,29 @@ export class FormStore {
       this.bumpAndNotifyAll();
       return true;
     } catch (err) {
+      if (this.submitEpoch !== mySubmitEpoch) {
+        return false;
+      }
       this.submitStatus = 'failure';
       const msg = err instanceof Error ? err.message : 'Form submission failed';
       this.formErrors = [msg];
       this.announceError(msg);
       this.bumpAndNotifyAll();
       return false;
+    } finally {
+      if (this.submitEpoch === mySubmitEpoch) {
+        this.isSubmitting = false;
+      }
     }
   }
 
   public reset(nextInitialValues?: FormValues): void {
     this.fieldValidateDebouncers.forEach((d) => d.cancel());
+    this.validationEngine.abortAsyncValidation();
+    this.formValidationEpoch += 1;
+    this.submitEpoch += 1;
+    this.isSubmitting = false;
+
     let base = nextInitialValues
       ? buildInitialFormValues(this.config, nextInitialValues)
       : deepClone(this.initialValues);
@@ -1264,6 +1438,7 @@ export class FormStore {
     this.dirtyFields = {};
     this.touchedFields = {};
     this.validatingFields = {};
+    this.fieldValidationSeq = {};
     this.filesByField = {};
     this.focusedField = null;
     this.submitCount = 0;
@@ -1272,9 +1447,11 @@ export class FormStore {
 
     for (const p of this.allFieldsMap.keys()) {
       this.externalValueVersion[p] = (this.externalValueVersion[p] ?? 0) + 1;
+      this.fieldValueVersion[p] = (this.fieldValueVersion[p] ?? 0) + 1;
     }
     for (const k of Object.keys(base)) {
       this.externalValueVersion[k] = (this.externalValueVersion[k] ?? 0) + 1;
+      this.fieldValueVersion[k] = (this.fieldValueVersion[k] ?? 0) + 1;
     }
 
     this.recomputeAllComputedFields(false);

@@ -266,8 +266,12 @@ export function TextPersonalFieldRenderer({
   const toggleModifiers = buildNativeAnimationModifiers(toggleAnim, isRevealed);
 
   const inputModifiers = useMemo(
-    () => getPlatformSensitiveInputModifiers(isPasswordType || Boolean(field.sensitive)),
-    [isPasswordType, field.sensitive]
+    () =>
+      getPlatformSensitiveInputModifiers(
+        isPasswordType || Boolean(field.sensitive),
+        field.type
+      ),
+    [isPasswordType, field.sensitive, field.type]
   );
 
   const leadingIcon = field.leadingIcon ?? preset.leadingIcon;

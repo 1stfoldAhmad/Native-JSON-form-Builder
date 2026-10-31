@@ -16,7 +16,11 @@ import {
 } from '@expo/ui/swift-ui/modifiers';
 
 import type { AnimationItemConfig } from '../types';
-import type { PlatformA11yParams } from './nativePlatformBridge';
+import type {
+  AnchorLayoutRect,
+  PlatformA11yParams,
+  PlatformScrollAnchorHandle,
+} from './nativePlatformBridge';
 
 export function getPlatformAnimationModifiers(
   animConfig: AnimationItemConfig | null,
@@ -72,7 +76,8 @@ export function getPlatformAnimationModifiers(
 export function getPlatformScrollContainerModifiers(
   dismissOnDrag: boolean,
   scrollTargetState: ObservableState<string | null>,
-  _keyboardAware = true
+  _keyboardAware = true,
+  _onContainerMeasured?: (rect: AnchorLayoutRect) => void
 ): { scrollModifiers: any[]; contentModifiers: any[] } {
   return {
     scrollModifiers: [
@@ -85,8 +90,18 @@ export function getPlatformScrollContainerModifiers(
   };
 }
 
-export function getPlatformFieldAnchorModifiers(anchorId: string): any[] {
+export function getPlatformFieldAnchorModifiers(
+  anchorId: string,
+  _onAnchorMeasured?: (rect: AnchorLayoutRect) => void
+): any[] {
   return [swiftIdModifier(anchorId)];
+}
+
+export function renderPlatformScrollAnchor(_props: {
+  anchorId: string;
+  onRegister?: (anchorId: string, handle: PlatformScrollAnchorHandle | null) => void;
+}): ReactElement | null {
+  return null;
 }
 
 export function getPlatformFieldA11yModifiers(params: PlatformA11yParams): any[] {
@@ -100,7 +115,10 @@ export function getPlatformHeadingModifiers(_text: string): any[] | undefined {
   return [accessibilityAddTraits(['isHeader'])];
 }
 
-export function getPlatformSensitiveInputModifiers(sensitive: boolean): any[] | undefined {
+export function getPlatformSensitiveInputModifiers(
+  sensitive: boolean,
+  _fieldTypeHint?: string
+): any[] | undefined {
   return sensitive ? [privacySensitive(true)] : undefined;
 }
 

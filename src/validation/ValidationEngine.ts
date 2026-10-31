@@ -308,11 +308,41 @@ export class ValidationEngine {
   }
 
   public updateConfig(config: FormConfig): void {
+    const idChanged = config.id !== this.config.id;
     const schemaChanged = config.schema !== this.config.schema;
+    if (idChanged) {
+      this.abortAsyncValidation();
+    }
     this.config = config;
     this.schemaRequiredSet = new Set(config.schema?.required ?? []);
     if (schemaChanged) {
       this.compileSchema(config.schema);
+    }
+  }
+
+  /**
+   * Aborts in-flight asynchronous validator request(s).
+   * If `fieldPath` is provided, aborts that field (and any nested child paths);
+   * otherwise aborts all active async validations across the form.
+   */
+  public abortAsyncValidation(fieldPath?: string): void {
+    if (!fieldPath) {
+      for (const controller of this.activeAsyncAborts.values()) {
+        controller.abort();
+      }
+      this.activeAsyncAborts.clear();
+      return;
+    }
+
+    for (const [key, controller] of this.activeAsyncAborts.entries()) {
+      if (
+        key === fieldPath ||
+        key.startsWith(`${fieldPath}.`) ||
+        key.startsWith(`${fieldPath}[`)
+      ) {
+        controller.abort();
+        this.activeAsyncAborts.delete(key);
+      }
     }
   }
 
@@ -673,16 +703,27 @@ export class ValidationEngine {
 
         if (fv?.cnic || format === 'cnic') {
           const cnicCfg = typeof fv?.cnic === 'object' ? fv.cnic : undefined;
-          const validCnic = cnicCfg?.pattern
-            ? new RegExp(cnicCfg.pattern).test(val)
-            : isValidCNIC(val, cnicCfg?.allowUnformatted ?? true);
+          let validCnic = false;
+          let invalidPatternError = false;
+          if (cnicCfg?.pattern) {
+            try {
+              validCnic = new RegExp(cnicCfg.pattern).test(val);
+            } catch {
+              validCnic = false;
+              invalidPatternError = true;
+            }
+          } else {
+            validCnic = isValidCNIC(val, cnicCfg?.allowUnformatted ?? true);
+          }
           if (!validCnic) {
             pushError({
               field: path,
               message:
                 cnicCfg?.message ??
                 fv?.messages?.cnic ??
-                'Please enter a valid CNIC (e.g. 35202-1234567-1)',
+                (invalidPatternError
+                  ? 'Invalid CNIC validation pattern configuration'
+                  : 'Please enter a valid CNIC (e.g. 35202-1234567-1)'),
               rule: 'cnic',
               source: 'field',
             });
@@ -936,6 +977,7 @@ export class ValidationEngine {
       onlyFields?: readonly string[];
       trigger?: 'onBlur' | 'onChange' | 'onSubmit';
       locale?: string;
+      isFieldStale?: (fieldPath: string, validatedValue: unknown) => boolean;
     }
   ): Promise<ValidationResult> {
     const syncResult = this.validateSync(values, {
@@ -994,7 +1036,12 @@ export class ValidationEngine {
               locale,
               signal: abortController.signal,
             });
-            if (abortController.signal.aborted) return;
+            if (
+              abortController.signal.aborted ||
+              options?.isFieldStale?.(desc.path, val)
+            ) {
+              return;
+            }
 
             if (outcome === false || (typeof outcome === 'string' && outcome.length > 0)) {
               const message =
@@ -1012,7 +1059,12 @@ export class ValidationEngine {
               ];
             }
           } catch (err) {
-            if (abortController.signal.aborted) return;
+            if (
+              abortController.signal.aborted ||
+              options?.isFieldStale?.(desc.path, val)
+            ) {
+              return;
+            }
             errorDetails[desc.path] = [
               ...(errorDetails[desc.path] ?? []),
               {

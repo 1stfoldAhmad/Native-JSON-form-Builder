@@ -187,6 +187,20 @@ export function parseAndValidateFormConfig(
       : []
   );
 
+  const checkRegexSyntax = (pattern: unknown, flags: unknown, issuePath: string) => {
+    if (typeof pattern !== 'string') return;
+    try {
+      // eslint-disable-next-line no-new
+      new RegExp(pattern, typeof flags === 'string' ? flags : undefined);
+    } catch (e) {
+      issues.push({
+        path: issuePath,
+        message: `Invalid regular expression "${pattern}": ${e instanceof Error ? e.message : 'syntax error'}`,
+        severity: 'error',
+      });
+    }
+  };
+
   const validateCondition = (cond: unknown, condPath: string) => {
     if (!cond || typeof cond !== 'object' || Array.isArray(cond)) {
       issues.push({
@@ -194,6 +208,26 @@ export function parseAndValidateFormConfig(
         message: 'Condition expression must be a JSON object (e.g. { "field": "role", "equals": "admin" }).',
         severity: 'error',
       });
+      return;
+    }
+
+    const obj = cond as Record<string, unknown>;
+    if (obj.matches !== undefined) {
+      if (typeof obj.matches === 'string') {
+        checkRegexSyntax(obj.matches, undefined, `${condPath}.matches`);
+      } else if (obj.matches && typeof obj.matches === 'object' && !Array.isArray(obj.matches)) {
+        const m = obj.matches as { pattern?: unknown; flags?: unknown };
+        checkRegexSyntax(m.pattern, m.flags, `${condPath}.matches.pattern`);
+      }
+    }
+    if (Array.isArray(obj.and)) {
+      obj.and.forEach((sub, i) => validateCondition(sub, `${condPath}.and[${i}]`));
+    }
+    if (Array.isArray(obj.or)) {
+      obj.or.forEach((sub, i) => validateCondition(sub, `${condPath}.or[${i}]`));
+    }
+    if (obj.not !== undefined && typeof obj.not === 'object' && obj.not !== null) {
+      validateCondition(obj.not, `${condPath}.not`);
     }
   };
 
@@ -318,17 +352,44 @@ export function parseAndValidateFormConfig(
             ? [{ pattern: field.validation.regex }]
             : [field.validation.regex];
         for (const r of rules) {
-          try {
-            // eslint-disable-next-line no-new
-            new RegExp(r.pattern, r.flags);
-          } catch (e) {
-            issues.push({
-              path: `${itemPath}.validation.regex`,
-              message: `Invalid regular expression "${r.pattern}": ${e instanceof Error ? e.message : 'syntax error'}`,
-              severity: 'error',
-            });
-          }
+          checkRegexSyntax(r.pattern, r.flags, `${itemPath}.validation.regex`);
         }
+      }
+
+      if (
+        field.validation?.cnic &&
+        typeof field.validation.cnic === 'object' &&
+        field.validation.cnic.pattern !== undefined
+      ) {
+        checkRegexSyntax(
+          field.validation.cnic.pattern,
+          undefined,
+          `${itemPath}.validation.cnic.pattern`
+        );
+      }
+
+      if (
+        field.validation?.phone &&
+        typeof field.validation.phone === 'object' &&
+        field.validation.phone.pattern !== undefined
+      ) {
+        checkRegexSyntax(
+          field.validation.phone.pattern,
+          undefined,
+          `${itemPath}.validation.phone.pattern`
+        );
+      }
+
+      if (field.validation?.password?.specialCharPattern !== undefined) {
+        checkRegexSyntax(
+          field.validation.password.specialCharPattern,
+          undefined,
+          `${itemPath}.validation.password.specialCharPattern`
+        );
+      }
+
+      if (field.validation?.requiredWhen !== undefined) {
+        validateCondition(field.validation.requiredWhen, `${itemPath}.validation.requiredWhen`);
       }
 
       if (field.fields && Array.isArray(field.fields)) {

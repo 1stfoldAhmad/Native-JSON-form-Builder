@@ -24,9 +24,14 @@ export function evaluatePasswordStrength(
   config?: PasswordValidationConfig
 ): PasswordStrengthResult {
   const minLength = config?.minLength ?? 8;
-  const specialRegex = config?.specialCharPattern
-    ? new RegExp(config.specialCharPattern)
-    : DEFAULT_SPECIAL_REGEX;
+  let specialRegex = DEFAULT_SPECIAL_REGEX;
+  if (config?.specialCharPattern) {
+    try {
+      specialRegex = new RegExp(config.specialCharPattern);
+    } catch {
+      specialRegex = DEFAULT_SPECIAL_REGEX;
+    }
+  }
 
   const checks = {
     minLength: value.length >= minLength,

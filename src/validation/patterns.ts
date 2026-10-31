@@ -39,7 +39,11 @@ export function isValidPhone(
       : countryOrOptions;
 
   if (options?.customPattern) {
-    return new RegExp(options.customPattern).test(raw);
+    try {
+      return new RegExp(options.customPattern).test(raw);
+    } catch {
+      return false;
+    }
   }
 
   const country = options?.countryCode?.toUpperCase();

@@ -18,9 +18,12 @@ export interface HostBoundaryProps {
 /**
  * First-class automatic `@expo/ui` Host boundary manager (Section 6).
  *
- * - `'auto'` (default): Reuses an existing ExpoForm-managed `<Host>` when nested inside
- *   `ExpoFormProvider` or another `ExpoForm` layout; automatically mounts a `<Host>`
- *   when placed inside an ordinary React Native `View` / `ScrollView` or standalone.
+ * - `'auto'` (default): Reuses an existing `ExpoForm`-managed `<Host>` when nested inside
+ *   `<HostBoundary>` or another `<ExpoForm />` layout via `ManagedHostContext`; automatically
+ *   mounts a `<Host>` when placed inside a standard React Native `View` or standalone screen.
+ *   Note: `@expo/ui`'s raw `<Host>` does not expose a public React context, so when embedding
+ *   `<ExpoForm />` directly inside an external manually mounted `@expo/ui` `<Host>`, pass
+ *   `hostMode="inherit"` to avoid nesting a second `<Host>`.
  * - `'inherit'`: Assumes an ancestor already mounted an external `@expo/ui` `<Host>`.
  * - `'always'`: Forces a dedicated `<Host>` (safely bridged via `RNHostView` if already inside a managed Host).
  */

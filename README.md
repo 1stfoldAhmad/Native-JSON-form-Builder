@@ -669,7 +669,15 @@ import {
 
 // 1. Define a custom native field renderer ("type": "promoCode" in form.json)
 function PromoCodeField({ value, onChange, onBlur, disabled, styles }: FieldRendererProps<string>) {
-  const state = useNativeState(value ?? '');
+  const display = value ?? '';
+  const state = useNativeState(display);
+
+  React.useEffect(() => {
+    if (state.get() !== display) {
+      state.set(display);
+    }
+  }, [display, state]);
+
   return (
     <Row spacing={8} alignment="center">
       <TextInput
@@ -678,7 +686,13 @@ function PromoCodeField({ value, onChange, onBlur, disabled, styles }: FieldRend
         placeholder="Enter promo code"
         style={styles.inputStyle}
         textStyle={styles.inputTextStyle}
-        onChangeText={(txt) => onChange(txt.toUpperCase())}
+        onChangeText={(txt) => {
+          const upper = txt.toUpperCase();
+          if (state.get() !== upper) {
+            state.set(upper);
+          }
+          onChange(upper);
+        }}
         onBlur={onBlur}
       />
       <Text>{value === 'EXPO58' ? '20% OFF!' : ''}</Text>
@@ -718,19 +732,26 @@ export function AppFormRoot({ children }: { children: React.ReactNode }) {
 ```
 
 ### `@expo/ui` Host Modes (`hostMode`)
-- **`"auto"` (default)**: Automatically mounts an `@expo/ui` `<Host>` unless already nested inside `<HostBoundary>` or another managed Host.
-- **`"inherit"`**: Uses an ancestor `<Host>` directly—ideal when composing `<ExpoForm />` inside a screen that already wraps `@expo/ui` `ScrollView` / toolbars in its own `<Host>`.
-- **`"always"`**: Forces an isolated `<Host>` boundary around the form.
+- **`"auto"` (default)**: Automatically mounts an `@expo/ui` `<Host>` when standalone inside React Native views, and reuses an ancestor `ExpoForm`-managed `<Host>` (tracked via `ManagedHostContext`) without double-wrapping. Because `@expo/ui`'s raw `<Host>` does not expose an external React context, pass `hostMode="inherit"` whenever embedding `<ExpoForm />` directly inside a manually mounted `@expo/ui` `<Host>`.
+- **`"inherit"`**: Uses an ancestor `<Host>` directly—required when composing `<ExpoForm />` inside an external `@expo/ui` `<Host>` (such as a custom SwiftUI/Compose screen shell) so a nested `<Host>` is not mounted.
+- **`"always"`**: Forces an isolated `<Host>` boundary around the form (bridging via `RNHostView` if already inside a managed `<Host>`).
 
 ---
 
-## 12. Security & Privacy Guarantees
+## 12. Security, Privacy & Platform Behavior
 
-- **Sensitive fields**: `password`, `confirmPassword`, `pin`, `otp`, and any field with `"sensitive": true` (or listed in `security.sensitiveFields`) automatically:
-  1. Apply SwiftUI `privacySensitive()` on iOS so app-switcher snapshots and screen recordings mask credentials.
-  2. Are excluded from persisted drafts via `omitSensitiveValues(...)`.
-  3. Are replaced with `"[REDACTED]"` when inspected through `redactSensitiveForLog(values, sensitivePaths)`.
-  4. Clear automatically on `reset()` when `security.clearSensitiveOnReset` is `true` (default).
+- **Store & draft protection (all platforms)**: `password`, `newPassword`, `confirmPassword`, `pin`, `otp`, `cvv`, and any field with `"sensitive": true` (or listed in `security.sensitiveFields`) automatically:
+  1. Are excluded from persisted auto-save drafts via `omitSensitiveValues(...)`.
+  2. Are replaced with `"[REDACTED]"` when inspected through `redactSensitiveForLog(values, sensitivePaths)`.
+  3. Clear automatically on `reset()` when `security.clearSensitiveOnReset` is `true` (default).
+- **Platform-level input privacy & screen-capture nuances**:
+  - **iOS (SwiftUI)**: Applies view-level `privacySensitive(true)` modifier alongside native `SecureField` / password autofill traits so app-switcher snapshots and system captures redact sensitive fields.
+  - **Android (Jetpack Compose)**: Applies `PasswordVisualTransformation` + `KeyboardType.Password` (`autoCorrectEnabled: false`) on password/PIN inputs and Compose `semantics({ contentType })` credential autofill classification on sensitive inputs so cleartext autofill history is not indexed. Because Android enforces screenshot and Recent Apps switcher redaction at the **Activity `Window`** level (`WindowManager.LayoutParams.FLAG_SECURE`) rather than per-Composable view modifiers, screens requiring OS screenshot/recents blocking on Android should enable [`expo-screen-capture`](https://docs.expo.dev/versions/latest/sdk/screen-capture/) (`usePreventScreenCapture()`).
+  - **Web**: Uses masked password inputs (`secureTextEntry`) and credential `autoComplete` hints while keeping sensitive values out of `localStorage` drafts.
+- **Programmatic scroll-to-field & first-error navigation**:
+  - **iOS**: SwiftUI `ScrollView` + `scrollPosition` + `scrollTargetLayout` + `id(anchorId)`.
+  - **Android**: Jetpack Compose `ScrollView` + `imePadding()` + `testID(anchorId)` + `onGloballyPositioned` layout tracking + native Compose `BringIntoView` focus anchors (supporting both text inputs and non-text fields such as checkboxes, selects, sliders, and uploads without opening the soft keyboard).
+  - **Web**: Smooth `scrollIntoView({ block: 'center' })` DOM anchor scrolling.
 - **Upload validation**: `validateSelectedFiles` verifies MIME patterns (`image/*`, `application/pdf`), file extensions, minimum/maximum byte sizes, and maximum file count before storing selected assets.
 
 ---
