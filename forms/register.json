@@ -1,0 +1,560 @@
+{
+  "id": "user-registration",
+  "version": "1.0.0",
+  "title": {
+    "en": "Create Your Account",
+    "ur": "اپنا اکاؤنٹ بنائیں"
+  },
+  "description": {
+    "en": "Complete the registration form below. Fields adapt automatically to your account type and country.",
+    "ur": "اپنی تفصیلات درج کریں۔ فارم آپ کے ملک اور اکاؤنٹ کی قسم کے مطابق خودکار طور پر ڈھل جائے گا۔"
+  },
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "required": [
+      "accountType",
+      "firstName",
+      "lastName",
+      "username",
+      "email",
+      "country",
+      "phone",
+      "birthday",
+      "password",
+      "confirmPassword",
+      "acceptTerms"
+    ],
+    "properties": {
+      "accountType": {
+        "type": "string",
+        "enum": ["personal", "business"]
+      },
+      "firstName": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 50
+      },
+      "lastName": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 50
+      },
+      "username": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 24,
+        "pattern": "^[a-zA-Z0-9_.-]+$"
+      },
+      "email": {
+        "type": "string",
+        "format": "email"
+      },
+      "country": {
+        "type": "string",
+        "minLength": 2
+      },
+      "state": {
+        "type": "string"
+      },
+      "city": {
+        "type": "string"
+      },
+      "phone": {
+        "type": "string",
+        "minLength": 7
+      },
+      "cnic": {
+        "type": "string",
+        "pattern": "^\\d{5}-\\d{7}-\\d$"
+      },
+      "organization": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 100
+      },
+      "jobTitle": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "website": {
+        "type": "string"
+      },
+      "birthday": {
+        "type": "string",
+        "minAge": 18
+      },
+      "password": {
+        "type": "string",
+        "minLength": 8
+      },
+      "confirmPassword": {
+        "type": "string",
+        "equalsField": "password"
+      },
+      "acceptTerms": {
+        "const": true,
+        "errorMessage": "You must accept the Terms of Service and Privacy Policy"
+      },
+      "marketingOptIn": {
+        "type": "boolean"
+      }
+    },
+    "if": {
+      "properties": {
+        "accountType": { "const": "business" }
+      }
+    },
+    "then": {
+      "required": ["organization"]
+    }
+  },
+  "defaults": {
+    "accountType": "personal",
+    "country": "PK",
+    "marketingOptIn": false,
+    "acceptTerms": false
+  },
+  "fields": [
+    {
+      "name": "accountType",
+      "type": "segmentedControl",
+      "label": {
+        "en": "Account Type",
+        "ur": "اکاؤنٹ کی قسم"
+      },
+      "options": [
+        { "label": "Personal", "value": "personal" },
+        { "label": "Business", "value": "business" }
+      ],
+      "required": true
+    },
+    {
+      "name": "firstName",
+      "type": "firstName",
+      "row": "nameRow",
+      "label": {
+        "en": "First Name",
+        "ur": "پہلا نام"
+      },
+      "placeholder": {
+        "en": "Ahmad",
+        "ur": "احمد"
+      },
+      "required": true
+    },
+    {
+      "name": "lastName",
+      "type": "lastName",
+      "row": "nameRow",
+      "label": {
+        "en": "Last Name",
+        "ur": "خاندانی نام"
+      },
+      "placeholder": {
+        "en": "Khan",
+        "ur": "خان"
+      },
+      "required": true
+    },
+    {
+      "name": "fullNamePreview",
+      "type": "computed",
+      "label": {
+        "en": "Display Name (Auto-computed)",
+        "ur": "مکمل نام"
+      },
+      "computed": {
+        "operation": "concat",
+        "fields": ["firstName", "lastName"],
+        "separator": " "
+      },
+      "visibleWhen": {
+        "field": "firstName",
+        "isNotEmpty": true
+      }
+    },
+    {
+      "name": "organization",
+      "type": "organization",
+      "label": {
+        "en": "Organization Name",
+        "ur": "ادارے کا نام"
+      },
+      "placeholder": "Acme Technologies Pvt. Ltd.",
+      "visibleWhen": {
+        "field": "accountType",
+        "equals": "business"
+      },
+      "requiredWhen": {
+        "field": "accountType",
+        "equals": "business"
+      },
+      "validation": {
+        "regex": {
+          "pattern": "^[A-Za-z0-9&.,'\\-\\s]{2,100}$",
+          "message": "Organization name contains unsupported characters"
+        }
+      }
+    },
+    {
+      "name": "jobTitle",
+      "type": "jobTitle",
+      "row": "bizRow",
+      "label": "Job Title",
+      "placeholder": "Engineering Lead",
+      "visibleWhen": {
+        "field": "accountType",
+        "equals": "business"
+      }
+    },
+    {
+      "name": "website",
+      "type": "website",
+      "row": "bizRow",
+      "label": "Company Website",
+      "placeholder": "https://company.com",
+      "visibleWhen": {
+        "field": "accountType",
+        "equals": "business"
+      }
+    },
+    {
+      "name": "username",
+      "type": "username",
+      "label": {
+        "en": "Username",
+        "ur": "یوزر نیم"
+      },
+      "placeholder": "ahmad.khan",
+      "helperText": "3–24 characters: letters, numbers, dots, underscores, or hyphens.",
+      "required": true,
+      "validation": {
+        "regex": {
+          "pattern": "^[a-zA-Z0-9_.-]{3,24}$",
+          "message": "Username may only contain letters, numbers, dots, underscores, and hyphens"
+        },
+        "async": {
+          "validatorId": "checkUsernameAvailable",
+          "debounceMs": 350,
+          "trigger": "onBlur",
+          "message": "This username is already taken"
+        }
+      }
+    },
+    {
+      "name": "email",
+      "type": "email",
+      "label": {
+        "en": "Email Address",
+        "ur": "ای میل ایڈریس"
+      },
+      "placeholder": "ahmad@example.com",
+      "leadingIcon": "mail",
+      "required": true,
+      "validation": {
+        "format": "email",
+        "async": {
+          "validatorId": "checkEmailAvailable",
+          "debounceMs": 350,
+          "trigger": "onBlur",
+          "message": "An account with this email already exists"
+        }
+      }
+    },
+    {
+      "name": "country",
+      "type": "country",
+      "label": {
+        "en": "Country",
+        "ur": "ملک"
+      },
+      "placeholder": "Select country",
+      "searchPlaceholder": "Search countries...",
+      "required": true
+    },
+    {
+      "name": "state",
+      "type": "state",
+      "row": "regionRow",
+      "label": "State / Province",
+      "countryField": "country",
+      "visibleWhen": {
+        "field": "country",
+        "in": ["PK", "US", "GB", "AE", "CA"]
+      }
+    },
+    {
+      "name": "city",
+      "type": "city",
+      "row": "regionRow",
+      "label": "City",
+      "visibleWhen": {
+        "field": "state",
+        "isNotEmpty": true
+      }
+    },
+    {
+      "name": "phone",
+      "type": "phone",
+      "label": {
+        "en": "Phone Number",
+        "ur": "فون نمبر"
+      },
+      "countryField": "country",
+      "required": true,
+      "validation": {
+        "phone": {
+          "countryField": "country",
+          "message": "Please enter a valid phone number for the selected country"
+        }
+      }
+    },
+    {
+      "name": "cnic",
+      "type": "masked",
+      "label": {
+        "en": "CNIC Number",
+        "ur": "قومی شناختی کارڈ نمبر"
+      },
+      "placeholder": "35202-1234567-1",
+      "mask": "#####-#######-#",
+      "visibleWhen": {
+        "field": "country",
+        "equals": "PK"
+      },
+      "validation": {
+        "cnic": {
+          "allowUnformatted": false,
+          "message": "Enter a valid 13-digit CNIC in format 35202-1234567-1"
+        }
+      }
+    },
+    {
+      "name": "birthday",
+      "type": "birthday",
+      "label": {
+        "en": "Date of Birth",
+        "ur": "تاریخ پیدائش"
+      },
+      "placeholder": "YYYY-MM-DD",
+      "required": true,
+      "validation": {
+        "minAge": 18,
+        "messages": {
+          "minAge": "You must be at least 18 years old to register"
+        }
+      }
+    },
+    {
+      "name": "password",
+      "type": "password",
+      "label": {
+        "en": "Password",
+        "ur": "پاس ورڈ"
+      },
+      "placeholder": "Minimum 8 characters",
+      "required": true,
+      "showStrengthIndicator": true,
+      "visibilityToggle": {
+        "showIcon": "eye",
+        "hideIcon": "eye-off",
+        "showLabel": "Show password",
+        "hideLabel": "Hide password"
+      },
+      "validation": {
+        "password": {
+          "minLength": 8,
+          "requireUppercase": true,
+          "requireLowercase": true,
+          "requireNumber": true,
+          "requireSpecialChar": true,
+          "disallowSpaces": true
+        }
+      }
+    },
+    {
+      "name": "confirmPassword",
+      "type": "confirmPassword",
+      "label": {
+        "en": "Confirm Password",
+        "ur": "پاس ورڈ کی تصدیق کریں"
+      },
+      "placeholder": "Re-enter your password",
+      "passwordField": "password",
+      "required": true,
+      "visibilityToggle": {
+        "showIcon": "eye",
+        "hideIcon": "eye-off"
+      },
+      "validation": {
+        "equalsField": "password",
+        "messages": {
+          "equalsField": "Confirm password must match password"
+        }
+      }
+    },
+    {
+      "name": "avatar",
+      "type": "avatar",
+      "label": "Profile Picture (Optional)",
+      "upload": {
+        "allowedMimeTypes": ["image/jpeg", "image/png", "image/webp"],
+        "allowedExtensions": [".jpg", ".jpeg", ".png", ".webp"],
+        "maxFileSize": 5242880,
+        "maxFiles": 1,
+        "sources": ["camera", "gallery"],
+        "imageQuality": 0.85,
+        "buttonLabel": "Select Avatar"
+      }
+    },
+    {
+      "name": "marketingOptIn",
+      "type": "switch",
+      "label": "Receive product updates and security tips"
+    },
+    {
+      "name": "acceptTerms",
+      "type": "checkbox",
+      "label": {
+        "en": "I agree to the Terms of Service and Privacy Policy",
+        "ur": "میں شرائط و ضوابط سے متفق ہوں"
+      },
+      "required": true,
+      "validation": {
+        "required": "You must accept the Terms of Service and Privacy Policy"
+      }
+    }
+  ],
+  "validation": {
+    "mode": "onBlur",
+    "validateOnChange": false,
+    "validateOnSubmit": true,
+    "showErrorsAfterTouch": true,
+    "clearErrorsOnChange": true,
+    "scrollToFirstError": true,
+    "focusFirstError": true
+  },
+  "scroll": {
+    "enabled": true,
+    "direction": "vertical",
+    "keyboardAware": true,
+    "scrollToFocusedField": true,
+    "dismissKeyboardOnDrag": true,
+    "bottomContentInset": 28,
+    "smoothScroll": true
+  },
+  "keyboard": {
+    "autoAdvanceFocus": true,
+    "submitOnLastField": true,
+    "defaultReturnKeyType": "next",
+    "lastFieldReturnKeyType": "done",
+    "dismissOnSubmit": true
+  },
+  "style": {
+    "form": {
+      "padding": 20,
+      "gap": 16,
+      "backgroundColor": "#FFFFFF",
+      "borderRadius": 16
+    },
+    "field": {
+      "height": 52,
+      "borderRadius": 12,
+      "borderWidth": 1,
+      "paddingHorizontal": 14,
+      "fontSize": 15
+    },
+    "label": {
+      "fontSize": 14,
+      "fontWeight": "600"
+    },
+    "error": {
+      "fontSize": 12,
+      "color": "#DC2626"
+    },
+    "submitButton": {
+      "height": 54,
+      "borderRadius": 12,
+      "backgroundColor": "#171717",
+      "color": "#FFFFFF",
+      "fontSize": 16,
+      "fontWeight": "600"
+    }
+  },
+  "theme": {
+    "mode": "system",
+    "seedColor": "#2563EB",
+    "dark": {
+      "background": "#09090B",
+      "surface": "#18181B",
+      "textPrimary": "#F8FAFC",
+      "textSecondary": "#A1A1AA",
+      "border": "#3F3F46",
+      "primary": "#2563EB",
+      "primaryForeground": "#FFFFFF",
+      "style": {
+        "form": {
+          "backgroundColor": "#09090B"
+        },
+        "submitButton": {
+          "backgroundColor": "#2563EB",
+          "color": "#FFFFFF"
+        }
+      }
+    }
+  },
+  "animations": {
+    "enabled": true,
+    "respectReducedMotion": true,
+    "preventLayoutJumps": true,
+    "formEnter": {
+      "type": "fade",
+      "duration": 250
+    },
+    "fieldReveal": {
+      "type": "spring",
+      "duration": 350,
+      "damping": 0.82
+    },
+    "error": {
+      "type": "fade",
+      "duration": 180
+    },
+    "scrollToError": {
+      "enabled": true,
+      "duration": 300
+    },
+    "visibilityToggle": {
+      "type": "easeInOut",
+      "duration": 150
+    }
+  },
+  "submit": {
+    "label": {
+      "en": "Create Account",
+      "ur": "اکاؤنٹ بنائیں"
+    },
+    "loadingLabel": {
+      "en": "Creating Account...",
+      "ur": "اکاؤنٹ بنایا جا رہا ہے..."
+    },
+    "successLabel": "Account Created!",
+    "showReset": true,
+    "resetLabel": {
+      "en": "Reset Form",
+      "ur": "دوبارہ ترتیب دیں"
+    }
+  },
+  "accessibility": {
+    "announceValidationErrors": true,
+    "announceRequiredFields": true,
+    "minTouchTargetSize": 44,
+    "requiredIndicatorText": "*"
+  },
+  "security": {
+    "protectSensitiveFields": true,
+    "clearSensitiveOnReset": true,
+    "sensitiveFields": ["password", "confirmPassword", "cnic"]
+  }
+}

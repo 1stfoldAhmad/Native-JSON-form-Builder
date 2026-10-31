@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "ExpoForm Demo",
+    "slug": "expo-form-demo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.firstfold.expoformdemo"
+    },
+    "android": {
+      "package": "com.firstfold.expoformdemo",
+      "softwareKeyboardLayoutMode": "pan"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow ExpoForm Demo to select profile photos and media.",
+          "cameraPermission": "Allow ExpoForm Demo to capture photos with the camera."
+        }
+      ],
+      "expo-document-picker"
+    ]
+  }
+}

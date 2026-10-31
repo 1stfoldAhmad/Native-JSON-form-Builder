@@ -1,0 +1,188 @@
+{
+  "id": "kyc-onboarding-wizard",
+  "version": "1.0.0",
+  "title": "Merchant KYC & Payout Setup",
+  "description": "Multi-step verification wizard demonstrating per-step validation, conditional document uploads, financial fields, and signature capture.",
+  "defaults": {
+    "contactMethod": "",
+    "documentType": "passport",
+    "monthlyVolume": 25000,
+    "payoutRange": [100, 5000],
+    "itemQuantity": 2,
+    "unitPrice": 150
+  },
+  "steps": [
+    {
+      "id": "identity",
+      "title": "Identity",
+      "description": "Provide primary contact and identification details.",
+      "validateBeforeNext": true,
+      "fields": [
+        {
+          "name": "contactMethod",
+          "type": "emailOrPhone",
+          "label": "Email or Mobile Number",
+          "placeholder": "merchant@store.pk or +92 300 1234567",
+          "required": true
+        },
+        {
+          "name": "verificationOtp",
+          "type": "otp",
+          "label": "6-Digit Verification Code",
+          "placeholder": "123456",
+          "maxLength": 6,
+          "required": true,
+          "validation": {
+            "regex": {
+              "pattern": "^\\d{6}$",
+              "message": "Enter the 6-digit numeric verification code"
+            }
+          }
+        },
+        {
+          "name": "documentType",
+          "type": "radioGroup",
+          "label": "Verification Document Type",
+          "required": true,
+          "options": [
+            { "label": "Passport", "value": "passport", "description": "International travel passport" },
+            { "label": "Driving License", "value": "driving_license", "description": "Front & back scan required" },
+            { "label": "National ID Card", "value": "national_id", "description": "Government-issued ID" }
+          ]
+        },
+        {
+          "name": "licenseNumber",
+          "type": "text",
+          "label": "Driving License Number",
+          "placeholder": "DL-2026-99881",
+          "visibleWhen": {
+            "field": "documentType",
+            "equals": "driving_license"
+          },
+          "requiredWhen": {
+            "field": "documentType",
+            "equals": "driving_license"
+          }
+        },
+        {
+          "name": "idDocumentFile",
+          "type": "pdf",
+          "label": "Upload Verification Document (PDF)",
+          "upload": {
+            "allowedMimeTypes": ["application/pdf", "image/jpeg", "image/png"],
+            "allowedExtensions": [".pdf", ".jpg", ".png"],
+            "maxFileSize": 10485760,
+            "buttonLabel": "Attach Document"
+          }
+        }
+      ]
+    },
+    {
+      "id": "financials",
+      "title": "Financials",
+      "description": "Configure pricing, estimated monthly volume, and payout thresholds.",
+      "validateBeforeNext": true,
+      "fields": [
+        {
+          "name": "itemQuantity",
+          "type": "quantity",
+          "row": "calcRow",
+          "label": "Bundle Quantity",
+          "min": 1,
+          "max": 50,
+          "step": 1,
+          "required": true
+        },
+        {
+          "name": "unitPrice",
+          "type": "price",
+          "row": "calcRow",
+          "label": "Unit Price (USD)",
+          "currency": "USD",
+          "min": 1,
+          "precision": 2,
+          "required": true
+        },
+        {
+          "name": "estimatedSubtotal",
+          "type": "computed",
+          "label": "Estimated Bundle Value",
+          "currency": "USD",
+          "precision": 2,
+          "computed": {
+            "operation": "multiply",
+            "fields": ["itemQuantity", "unitPrice"],
+            "precision": 2
+          }
+        },
+        {
+          "name": "monthlyVolume",
+          "type": "slider",
+          "label": "Projected Monthly Volume",
+          "min": 0,
+          "max": 100000,
+          "step": 2500,
+          "prefix": "$"
+        },
+        {
+          "name": "payoutRange",
+          "type": "rangeSlider",
+          "label": "Auto-Payout Threshold Range",
+          "min": 50,
+          "max": 10000,
+          "step": 50,
+          "prefix": "$"
+        }
+      ]
+    },
+    {
+      "id": "authorization",
+      "title": "Sign & Submit",
+      "description": "Review compliance declarations and attach your electronic signature.",
+      "validateBeforeNext": true,
+      "fields": [
+        {
+          "name": "timezone",
+          "type": "timezone",
+          "label": "Settlement Timezone",
+          "defaultValue": "Asia/Karachi",
+          "required": true
+        },
+        {
+          "name": "complianceChecks",
+          "type": "checkboxGroup",
+          "label": "Compliance Declarations",
+          "required": true,
+          "options": [
+            { "label": "Beneficial ownership details are accurate", "value": "ubo" },
+            { "label": "Authorized to bind the business entity", "value": "authority" }
+          ],
+          "validation": {
+            "minItems": 2,
+            "messages": {
+              "minItems": "Please confirm both compliance declarations"
+            }
+          }
+        },
+        {
+          "name": "authorizedSignature",
+          "type": "signature",
+          "label": "Authorized Signatory",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "submit": {
+    "label": "Submit KYC Application",
+    "loadingLabel": "Submitting Application...",
+    "showReset": true
+  },
+  "animations": {
+    "enabled": true,
+    "stepTransition": {
+      "type": "spring",
+      "duration": 300
+    }
+  }
+}
