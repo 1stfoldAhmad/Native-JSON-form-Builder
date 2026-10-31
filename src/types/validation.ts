@@ -95,12 +95,18 @@ export interface ConditionClause {
   or?: readonly ConditionExpression[];
   /** Logical NOT combinator. */
   not?: ConditionExpression;
+  /** Reference to a reusable named condition in `config.conditions` or `ConditionRegistry`. */
+  $condition?: string;
 }
 
 /**
- * Supports either a structured ConditionClause or a shorthand map `{ [fieldName]: expectedValue }`.
+ * Supports a structured ConditionClause, a `$condition:<name>` reference string,
+ * or a shorthand map `{ [fieldName]: expectedValue }`.
  */
-export type ConditionExpression = ConditionClause | Record<string, unknown>;
+export type ConditionExpression =
+  | ConditionClause
+  | Record<string, unknown>
+  | `$condition:${string}`;
 
 /**
  * Custom regex rule with optional flags and field-specific validation message.

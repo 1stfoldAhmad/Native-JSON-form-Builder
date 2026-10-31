@@ -59,8 +59,12 @@ export function BarcodeScannerFieldRenderer({
     }
 
     let extracted = rawCode.trim();
+    if (!extracted) {
+      return;
+    }
     if (field.scan?.extractPattern) {
       if (extracted.length > MAX_REGEX_INPUT_LENGTH) {
+        store.setValue(fieldPath, undefined, { shouldDirty: true, shouldTouch: true });
         store.setError(
           fieldPath,
           `Scanned code exceeds maximum safe pattern length (${MAX_REGEX_INPUT_LENGTH} characters)`
@@ -69,6 +73,7 @@ export function BarcodeScannerFieldRenderer({
       }
       const compiledRegex = compileSafeRegex(field.scan.extractPattern);
       if (!compiledRegex) {
+        store.setValue(fieldPath, undefined, { shouldDirty: true, shouldTouch: true });
         store.setError(
           fieldPath,
           'Scan extraction pattern is invalid or unsafe to evaluate'
@@ -77,6 +82,7 @@ export function BarcodeScannerFieldRenderer({
       }
       const m = compiledRegex.exec(extracted);
       if (!m) {
+        store.setValue(fieldPath, undefined, { shouldDirty: true, shouldTouch: true });
         store.setError(fieldPath, 'Scanned code did not match expected format');
         return;
       }
@@ -142,7 +148,15 @@ export function BarcodeScannerFieldRenderer({
           testID={`barcode-input-${fieldPath}`}
           onChangeText={handleChangeText}
           onFocus={onFocus}
-          onBlur={onBlur}
+          onBlur={() => {
+            if (field.scan?.extractPattern) {
+              const currentRaw = String(store.getValue(fieldPath) ?? '');
+              if (currentRaw) {
+                applyScannedValue(currentRaw);
+              }
+            }
+            onBlur();
+          }}
           onSubmitEditing={onSubmitEditing}
         />
 

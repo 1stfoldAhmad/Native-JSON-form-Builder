@@ -2,7 +2,8 @@ appId: com.firstfold.expoformdemo
 ---
 # Native SwiftUI (iOS) & Jetpack Compose (Android) E2E Critical Flows
 # Verifies Host mounting, native TextInput state, validation error scrolling,
-# multi-step wizard navigation, 88-type registration gallery, and Custom Studio.
+# multi-step wizard gating & step transitions, enterprise workflow form,
+# 88-type registration gallery, and Custom Studio.
 - launchApp:
     clearState: true
 
@@ -29,16 +30,30 @@ appId: com.firstfold.expoformdemo
 - tapOn:
     id: "expo-form-submit-button"
 
-# 2. Registration Form (All 88 Field Types Showcase)
+# 2. 3-Step Password Recovery Wizard: prefill & step-by-step wizard navigation
+- openLink: "expo-form-demo:///forgot-password"
+- assertVisible: "Reset Your Password"
+- tapOn: "Prefill Recovery"
+- tapOn:
+    id: "wizard-next-button"
+- tapOn:
+    id: "wizard-next-button"
+- assertVisible: "Update Password"
+
+# 3. Enterprise Vehicle Registration & Excise Assessment (Levels 1-4 Showcase)
+- openLink: "expo-form-demo:///enterprise-vehicle"
+- assertVisible: "Enterprise Vehicle Registration & Excise Assessment"
+
+# 4. Registration Form (All 88 Field Types Showcase)
 - openLink: "expo-form-demo:///register"
 - assertVisible: "Register (All 88 Field Types)"
 
-# 3. Multi-Step Merchant KYC Wizard: verify step gating on Next button
+# 5. Multi-Step Merchant KYC Wizard: verify step gating on Next button
 - openLink: "expo-form-demo:///kyc-wizard"
 - assertVisible: "Merchant KYC & Payout Setup"
 - tapOn:
     id: "wizard-next-button"
 
-# 4. Live Custom form.json Studio
+# 6. Live Custom form.json Studio
 - openLink: "expo-form-demo:///custom-builder"
 - assertVisible: "Custom form.json Studio"

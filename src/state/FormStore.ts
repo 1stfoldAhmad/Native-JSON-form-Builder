@@ -49,6 +49,10 @@ import {
 } from '../utils/deepPath';
 import { collectSensitiveFieldPaths, omitSensitiveValues } from '../utils/security';
 import { normalizeServerValidationErrors } from '../validation/AsyncValidationManager';
+import {
+  resolveUploadConstraints,
+  validateSelectedFiles,
+} from '../uploads/UploadAdapter';
 import { collectActiveFields, ValidationEngine } from '../validation/ValidationEngine';
 import { PathSubscriptionIndex } from './PathSubscriptionIndex';
 
@@ -286,6 +290,9 @@ function coerceReconciledFieldValue(
 
   if (nextType === 'repeater' || nextType === 'arrayGroup') {
     if (Array.isArray(currentVal)) {
+      if (typeof nextField.maxItems === 'number' && currentVal.length > nextField.maxItems) {
+        return { value: currentVal.slice(0, nextField.maxItems), replaced: true };
+      }
       return { value: currentVal, replaced: false };
     }
     return { value: deepClone(seededDefault ?? []), replaced: true };
@@ -362,7 +369,11 @@ function pruneValuesAgainstFields(
         field.fields.length > 0 &&
         Array.isArray(rawVal)
       ) {
-        targetObj[field.name] = rawVal.map((row) => {
+        const boundedRows =
+          typeof field.maxItems === 'number' && rawVal.length > field.maxItems
+            ? rawVal.slice(0, field.maxItems)
+            : rawVal;
+        targetObj[field.name] = boundedRows.map((row) => {
           if (!row || typeof row !== 'object' || Array.isArray(row)) {
             return deepClone(row);
           }
@@ -994,6 +1005,7 @@ export class FormStore {
         Boolean(prevField) &&
         (prevField!.type !== nextField.type ||
           !deepEqual(prevField!.options, nextField.options) ||
+          !deepEqual(prevField!.upload, nextField.upload) ||
           !deepEqual(prevField!.formula, nextField.formula) ||
           !deepEqual(prevField!.computed, nextField.computed) ||
           !deepEqual(prevField!.validation, nextField.validation) ||
@@ -1047,7 +1059,7 @@ export class FormStore {
           }
           this.externalValueVersion[path] = (this.externalValueVersion[path] ?? 0) + 1;
           this.markFieldMutated(path);
-        } else if (this.errors[path]) {
+        } else if (fieldChanged && this.errors[path]) {
           // Re-check existing error against updated validation rules
           const syncRes = this.validationEngine.validateSync(this.values, {
             onlyFields: [path],
@@ -1057,6 +1069,32 @@ export class FormStore {
             this.errors[path] = syncRes.errors[path];
           } else {
             delete this.errors[path];
+          }
+        }
+
+        if (UPLOAD_FIELD_TYPES.has(nextField.type) && this.filesByField[path]?.length) {
+          const uploadConstraints = resolveUploadConstraints(
+            nextField.type,
+            nextField.upload
+          );
+          const { accepted } = validateSelectedFiles(
+            this.filesByField[path],
+            uploadConstraints
+          );
+          if (accepted.length === 0) {
+            delete this.filesByField[path];
+            this.values = setByPath(
+              this.values,
+              path,
+              uploadConstraints.multiple ? [] : undefined
+            );
+          } else {
+            this.filesByField[path] = accepted;
+            this.values = setByPath(
+              this.values,
+              path,
+              uploadConstraints.multiple ? accepted : accepted[0]
+            );
           }
         }
       }
