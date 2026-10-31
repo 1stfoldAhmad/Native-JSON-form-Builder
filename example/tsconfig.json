@@ -1,0 +1,18 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "native-json-form-builder": ["../src/index.ts"]
+    }
+  },
+  "include": [
+    "App.tsx",
+    "index.ts",
+    "components/**/*",
+    "screens/**/*",
+    "forms/**/*.json",
+    "../forms/**/*.json"
+  ]
+}

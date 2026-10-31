@@ -1,0 +1,33 @@
+{
+  "name": "native-json-form-builder-example",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo run:ios",
+    "android": "expo run:android",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@expo/material-symbols": "^0.1.1",
+    "@expo/ui": "~58.0.25",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "expo": "~58.0.21",
+    "expo-document-picker": "~58.0.4",
+    "expo-image-picker": "~58.0.10",
+    "native-json-form-builder": "file:..",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-web": "~0.21.4",
+    "react-native-worklets": "0.13.0",
+    "sf-symbols-typescript": "^2.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.10",
+    "typescript": "~5.9.3"
+  }
+}

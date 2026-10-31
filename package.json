@@ -1,0 +1,96 @@
+{
+  "name": "native-json-form-builder",
+  "version": "1.0.0",
+  "description": "Schema-driven native JSON form builder and renderer for React Native, powered by @expo/ui (SwiftUI & Jetpack Compose) and AJV JSON Schema 2020-12.",
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "react-native": "./src/index.ts",
+  "source": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "react-native": "./src/index.ts",
+      "expo-source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./forms/*": "./forms/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "forms",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "expo",
+    "expo-ui",
+    "react-native",
+    "swiftui",
+    "jetpack-compose",
+    "json-schema",
+    "form-builder",
+    "ajv",
+    "typescript",
+    "universal"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "typecheck:example": "tsc -p example/tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
+  },
+  "peerDependencies": {
+    "@expo/ui": ">=58.0.0",
+    "expo": ">=58.0.0",
+    "expo-document-picker": "*",
+    "expo-image-picker": "*",
+    "react": ">=19.0.0",
+    "react-dom": "*",
+    "react-native": ">=0.81.0",
+    "react-native-worklets": "*"
+  },
+  "peerDependenciesMeta": {
+    "expo-document-picker": {
+      "optional": true
+    },
+    "expo-image-picker": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "react-native-worklets": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@expo/material-symbols": "^0.1.1",
+    "@expo/ui": "~58.0.25",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^22.14.0",
+    "@types/react": "~19.3.0",
+    "@types/react-dom": "~19.3.0",
+    "expo": "~58.0.21",
+    "expo-document-picker": "~58.0.4",
+    "expo-image-picker": "~58.0.10",
+    "jsdom": "^26.1.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-web": "~0.21.4",
+    "react-native-worklets": "0.13.0",
+    "sf-symbols-typescript": "^2.1.0",
+    "typescript": "~5.9.3",
+    "vitest": "^3.2.7"
+  }
+}

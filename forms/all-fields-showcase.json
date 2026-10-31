@@ -1,0 +1,132 @@
+{
+  "id": "all-fields-catalogue",
+  "version": "1.0.0",
+  "title": "Complete Field Catalogue Showcase",
+  "description": "Demonstrates searchable multi-selects, tags, ratings, color pickers, dates, coordinates, repeaters, and collapsible sections.",
+  "defaults": {
+    "skills": ["typescript", "expo"],
+    "tags": ["swiftui", "compose"],
+    "satisfactionRating": 5,
+    "brandColor": "#2563EB",
+    "availabilityDuration": "01:30",
+    "workHistory": [
+      { "company": "1stFold", "role": "Mobile Architect" }
+    ]
+  },
+  "sections": [
+    {
+      "id": "selection-showcase",
+      "title": "Selection, Search & Choice Controls",
+      "variant": "card",
+      "collapsible": true,
+      "defaultExpanded": true,
+      "fields": [
+        {
+          "name": "department",
+          "type": "select",
+          "label": "Department (Native Picker)",
+          "options": [
+            { "label": "Mobile Engineering", "value": "mobile" },
+            { "label": "Product Design", "value": "design" },
+            { "label": "Platform Infrastructure", "value": "infra" }
+          ]
+        },
+        {
+          "name": "skills",
+          "type": "searchableMultiSelect",
+          "label": "Core Technologies (Searchable Multi-Select)",
+          "searchPlaceholder": "Filter technologies...",
+          "selectAll": true,
+          "maxSelections": 5,
+          "options": [
+            { "label": "TypeScript", "value": "typescript", "group": "Languages" },
+            { "label": "Swift", "value": "swift", "group": "Languages" },
+            { "label": "Kotlin", "value": "kotlin", "group": "Languages" },
+            { "label": "Expo UI", "value": "expo", "group": "Frameworks" },
+            { "label": "React Native", "value": "rn", "group": "Frameworks" },
+            { "label": "AJV JSON Schema", "value": "ajv", "group": "Validation" }
+          ]
+        },
+        {
+          "name": "workMode",
+          "type": "chips",
+          "label": "Preferred Work Arrangement (Chips)",
+          "maxSelections": 2,
+          "options": [
+            { "label": "Remote", "value": "remote" },
+            { "label": "Hybrid", "value": "hybrid" },
+            { "label": "On-site", "value": "onsite" }
+          ]
+        },
+        {
+          "name": "tags",
+          "type": "tagInput",
+          "label": "Custom Tags",
+          "placeholder": "Type a tag and press Add..."
+        },
+        {
+          "name": "satisfactionRating",
+          "type": "rating",
+          "label": "Developer Experience Rating",
+          "maxRating": 5
+        },
+        {
+          "name": "brandColor",
+          "type": "colorPicker",
+          "label": "Accent Color"
+        }
+      ]
+    },
+    {
+      "id": "schedule-location",
+      "title": "Schedule, Coordinates & Repeater",
+      "variant": "card",
+      "collapsible": true,
+      "defaultExpanded": true,
+      "fields": [
+        {
+          "name": "projectDates",
+          "type": "dateRange",
+          "label": "Project Window"
+        },
+        {
+          "name": "availabilityDuration",
+          "type": "duration",
+          "label": "Daily Standup Allocation"
+        },
+        {
+          "name": "officeCoordinates",
+          "type": "coordinates",
+          "label": "Office Coordinates (Lat / Lng)"
+        },
+        {
+          "name": "workHistory",
+          "type": "repeater",
+          "label": "Previous Experience (Repeatable Group)",
+          "itemLabelTemplate": "Experience #{{index}}",
+          "addButtonLabel": "Add Experience",
+          "minItems": 0,
+          "maxItems": 5,
+          "fields": [
+            {
+              "name": "company",
+              "type": "organization",
+              "label": "Company",
+              "required": true
+            },
+            {
+              "name": "role",
+              "type": "jobTitle",
+              "label": "Role",
+              "required": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "submit": {
+    "label": "Save Profile",
+    "showReset": true
+  }
+}
