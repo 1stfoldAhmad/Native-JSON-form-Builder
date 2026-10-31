@@ -96,6 +96,54 @@ export function setByPath<T extends Record<string, unknown>>(
   return clone as T;
 }
 
+export function deleteByPath<T extends Record<string, unknown>>(
+  target: T,
+  path: string
+): T {
+  if (!path || hasUnsafePathSegment(path)) return target;
+  const segments = splitPath(path);
+  if (segments.length === 0) return target;
+
+  if (segments.length === 1) {
+    if (!Object.prototype.hasOwnProperty.call(target, segments[0])) {
+      return target;
+    }
+    const clone: Record<string, unknown> = { ...target };
+    delete clone[segments[0]];
+    return clone as T;
+  }
+
+  if (getByPath(target, path) === undefined) {
+    return target;
+  }
+
+  const clone: Record<string, unknown> = Array.isArray(target)
+    ? ([...target] as unknown as Record<string, unknown>)
+    : { ...target };
+
+  let cursor: Record<string, unknown> = clone;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const key = segments[i];
+    const existing = cursor[key];
+    if (existing == null || typeof existing !== 'object') {
+      return target;
+    }
+    const nextContainer = Array.isArray(existing)
+      ? [...existing]
+      : { ...(existing as Record<string, unknown>) };
+    cursor[key] = nextContainer;
+    cursor = nextContainer as Record<string, unknown>;
+  }
+
+  const leaf = segments[segments.length - 1];
+  if (Array.isArray(cursor) && /^\d+$/.test(leaf)) {
+    cursor.splice(Number(leaf), 1);
+  } else {
+    delete cursor[leaf];
+  }
+  return clone as T;
+}
+
 export function isEmptyValue(value: unknown): boolean {
   if (value === null || value === undefined || value === '') return true;
   if (Array.isArray(value)) return value.length === 0;

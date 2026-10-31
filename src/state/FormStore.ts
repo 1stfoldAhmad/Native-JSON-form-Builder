@@ -36,10 +36,17 @@ import type {
   FormSubmitHelpers,
   FormSubmitStatus,
   FormValues,
+  SchemaReconciliationReport,
   ValidationResult,
 } from '../types';
 import { createDebounced, type DebouncedFunction } from '../utils/debounce';
-import { deepClone, deepEqual, getByPath, setByPath } from '../utils/deepPath';
+import {
+  deepClone,
+  deepEqual,
+  deleteByPath,
+  getByPath,
+  setByPath,
+} from '../utils/deepPath';
 import { collectSensitiveFieldPaths, omitSensitiveValues } from '../utils/security';
 import { normalizeServerValidationErrors } from '../validation/AsyncValidationManager';
 import { collectActiveFields, ValidationEngine } from '../validation/ValidationEngine';
@@ -69,6 +76,11 @@ export interface ScrollToFieldOptions {
 export interface FormStoreInitOptions {
   config: FormConfig;
   initialValues?: FormValues;
+  resetKey?: string | number;
+  enableReinitialize?: boolean;
+  keepDirtyOnReinitialize?: boolean;
+  renamedFields?: Record<string, string>;
+  loading?: boolean;
   callbacks?: FormStoreCallbacks;
   asyncValidators?: Record<string, AsyncFieldValidator>;
   actions?: Record<string, ActionHandler>;
@@ -80,6 +92,314 @@ export interface FormStoreInitOptions {
   disabled?: boolean;
   readOnly?: boolean;
   onScrollToField?: (fieldName: string, options?: ScrollToFieldOptions) => void;
+}
+
+const BOOLEAN_FIELD_TYPES = new Set(['checkbox', 'switch']);
+const NUMERIC_FIELD_TYPES = new Set([
+  'number',
+  'integer',
+  'decimal',
+  'currency',
+  'percentage',
+  'age',
+  'quantity',
+  'price',
+  'phoneExtension',
+  'slider',
+  'rating',
+  'year',
+  'duration',
+]);
+const INTEGER_FIELD_TYPES = new Set([
+  'integer',
+  'age',
+  'quantity',
+  'phoneExtension',
+  'year',
+]);
+const MULTI_CHOICE_FIELD_TYPES = new Set([
+  'checkboxGroup',
+  'multiSelect',
+  'searchableMultiSelect',
+  'chips',
+  'tagInput',
+]);
+const SINGLE_CHOICE_FIELD_TYPES = new Set([
+  'select',
+  'searchableSelect',
+  'radioGroup',
+  'segmentedControl',
+]);
+const UPLOAD_FIELD_TYPES = new Set([
+  'image',
+  'camera',
+  'avatar',
+  'video',
+  'audio',
+  'document',
+  'documentScan',
+  'pdf',
+  'file',
+  'multipleFiles',
+  'multipleImages',
+  'signature',
+]);
+const STRUCTURAL_WRAPPER_TYPES = new Set([
+  'section',
+  'fieldGroup',
+  'conditionalGroup',
+]);
+const NON_VALUE_DISPLAY_TYPES = new Set([
+  'heading',
+  'description',
+  'staticText',
+  'divider',
+]);
+
+function extractAllowedStaticOptions(field: FieldConfig): Set<unknown> | null {
+  if (field.dataSource || !field.options || field.options.length === 0) {
+    return null;
+  }
+  const allowed = new Set<unknown>();
+  for (const opt of field.options) {
+    if (opt !== null && typeof opt === 'object' && 'value' in opt) {
+      allowed.add(opt.value);
+    } else {
+      allowed.add(opt);
+    }
+  }
+  return allowed;
+}
+
+function coerceReconciledFieldValue(
+  currentVal: unknown,
+  prevField: FieldConfig | undefined,
+  nextField: FieldConfig,
+  seededDefault: unknown
+): { value: unknown; replaced: boolean } {
+  const nextType = nextField.type;
+  const prevType = prevField?.type;
+
+  if (nextType === 'calculated' || nextType === 'computed' || nextField.formula || nextField.computed) {
+    return { value: currentVal, replaced: prevType !== nextType };
+  }
+
+  // Upload <-> non-upload transitions are never value-compatible
+  const prevWasUpload = Boolean(prevType && UPLOAD_FIELD_TYPES.has(prevType));
+  const nextIsUpload = UPLOAD_FIELD_TYPES.has(nextType);
+  if (prevWasUpload !== nextIsUpload) {
+    return { value: deepClone(seededDefault), replaced: true };
+  }
+  if (nextIsUpload) {
+    const nextMulti =
+      nextType === 'multipleFiles' ||
+      nextType === 'multipleImages' ||
+      Boolean(nextField.upload?.multiple);
+    if (nextMulti && !Array.isArray(currentVal)) {
+      return { value: currentVal ? [currentVal] : [], replaced: true };
+    }
+    if (!nextMulti && Array.isArray(currentVal)) {
+      return { value: currentVal[0] ?? undefined, replaced: true };
+    }
+    return { value: currentVal, replaced: false };
+  }
+
+  if (BOOLEAN_FIELD_TYPES.has(nextType)) {
+    if (typeof currentVal === 'boolean') return { value: currentVal, replaced: false };
+    return { value: deepClone(seededDefault ?? false), replaced: true };
+  }
+
+  if (NUMERIC_FIELD_TYPES.has(nextType)) {
+    if (typeof currentVal === 'number' && Number.isFinite(currentVal)) {
+      const normalized = INTEGER_FIELD_TYPES.has(nextType)
+        ? Math.trunc(currentVal)
+        : currentVal;
+      return { value: normalized, replaced: normalized !== currentVal };
+    }
+    if (typeof currentVal === 'string' && currentVal.trim() !== '') {
+      const parsed = Number(currentVal.trim());
+      if (Number.isFinite(parsed)) {
+        return {
+          value: INTEGER_FIELD_TYPES.has(nextType) ? Math.trunc(parsed) : parsed,
+          replaced: true,
+        };
+      }
+    }
+    return { value: deepClone(seededDefault), replaced: true };
+  }
+
+  if (nextType === 'rangeSlider') {
+    if (
+      Array.isArray(currentVal) &&
+      currentVal.length === 2 &&
+      typeof currentVal[0] === 'number' &&
+      typeof currentVal[1] === 'number'
+    ) {
+      return { value: currentVal, replaced: false };
+    }
+    return { value: deepClone(seededDefault ?? [nextField.min ?? 0, nextField.max ?? 100]), replaced: true };
+  }
+
+  if (MULTI_CHOICE_FIELD_TYPES.has(nextType)) {
+    const allowed = extractAllowedStaticOptions(nextField);
+    if (Array.isArray(currentVal)) {
+      if (!allowed) return { value: currentVal, replaced: false };
+      const filtered = currentVal.filter((item) => allowed.has(item));
+      return {
+        value: filtered,
+        replaced: filtered.length !== currentVal.length,
+      };
+    }
+    if (
+      (typeof currentVal === 'string' || typeof currentVal === 'number') &&
+      currentVal !== ''
+    ) {
+      if (!allowed || allowed.has(currentVal)) {
+        return { value: [currentVal], replaced: true };
+      }
+    }
+    return { value: deepClone(seededDefault ?? []), replaced: true };
+  }
+
+  if (SINGLE_CHOICE_FIELD_TYPES.has(nextType)) {
+    if (
+      currentVal === undefined ||
+      currentVal === null ||
+      typeof currentVal === 'object'
+    ) {
+      return { value: deepClone(seededDefault), replaced: currentVal !== undefined };
+    }
+    const allowed = extractAllowedStaticOptions(nextField);
+    if (allowed && currentVal !== '' && !allowed.has(currentVal)) {
+      return { value: deepClone(seededDefault), replaced: true };
+    }
+    return { value: currentVal, replaced: false };
+  }
+
+  if (nextType === 'objectGroup') {
+    if (currentVal && typeof currentVal === 'object' && !Array.isArray(currentVal)) {
+      return { value: currentVal, replaced: false };
+    }
+    return { value: deepClone(seededDefault ?? {}), replaced: true };
+  }
+
+  if (nextType === 'repeater' || nextType === 'arrayGroup') {
+    if (Array.isArray(currentVal)) {
+      return { value: currentVal, replaced: false };
+    }
+    return { value: deepClone(seededDefault ?? []), replaced: true };
+  }
+
+  if (nextType === 'coordinates') {
+    if (currentVal && typeof currentVal === 'object' && !Array.isArray(currentVal)) {
+      return { value: currentVal, replaced: false };
+    }
+    return { value: deepClone(seededDefault ?? { latitude: '', longitude: '' }), replaced: true };
+  }
+
+  if (nextType === 'dateRange') {
+    if (currentVal && typeof currentVal === 'object' && !Array.isArray(currentVal)) {
+      return { value: currentVal, replaced: false };
+    }
+    return { value: deepClone(seededDefault ?? { startDate: '', endDate: '' }), replaced: true };
+  }
+
+  // Default scalar string/text-like field
+  if (typeof currentVal === 'string' || currentVal === undefined) {
+    return { value: currentVal, replaced: false };
+  }
+  if (typeof currentVal === 'number') {
+    return { value: String(currentVal), replaced: true };
+  }
+  return { value: deepClone(seededDefault ?? ''), replaced: true };
+}
+
+function pruneValuesAgainstFields(
+  source: FormValues,
+  fields: readonly FieldConfig[]
+): FormValues {
+  const out: FormValues = {};
+
+  const collectInto = (
+    targetObj: Record<string, unknown>,
+    srcObj: Record<string, unknown>,
+    fieldList: readonly FieldConfig[]
+  ) => {
+    for (const field of fieldList) {
+      if (field.type === 'stepGroup' && field.steps) {
+        for (const step of field.steps) {
+          collectInto(targetObj, srcObj, step.fields);
+        }
+        continue;
+      }
+      if (STRUCTURAL_WRAPPER_TYPES.has(field.type) && field.fields) {
+        collectInto(targetObj, srcObj, field.fields);
+        continue;
+      }
+      if (NON_VALUE_DISPLAY_TYPES.has(field.type) || !field.name) {
+        continue;
+      }
+
+      if (!Object.prototype.hasOwnProperty.call(srcObj, field.name)) {
+        continue;
+      }
+      const rawVal = srcObj[field.name];
+
+      if (
+        field.type === 'objectGroup' &&
+        field.fields &&
+        rawVal &&
+        typeof rawVal === 'object' &&
+        !Array.isArray(rawVal)
+      ) {
+        const nestedTarget: Record<string, unknown> = {};
+        collectInto(nestedTarget, rawVal as Record<string, unknown>, field.fields);
+        targetObj[field.name] = nestedTarget;
+      } else if (
+        (field.type === 'repeater' || field.type === 'arrayGroup') &&
+        field.fields &&
+        field.fields.length > 0 &&
+        Array.isArray(rawVal)
+      ) {
+        targetObj[field.name] = rawVal.map((row) => {
+          if (!row || typeof row !== 'object' || Array.isArray(row)) {
+            return deepClone(row);
+          }
+          const prunedRow: Record<string, unknown> = {};
+          collectInto(prunedRow, row as Record<string, unknown>, field.fields!);
+          return prunedRow;
+        });
+      } else {
+        targetObj[field.name] = deepClone(rawVal);
+      }
+    }
+  };
+
+  collectInto(out, source, fields);
+  return out;
+}
+
+function collectTopValueFieldsForPruning(config: FormConfig): FieldConfig[] {
+  const byName = new Map<string, FieldConfig>();
+  for (const f of config.fields ?? []) {
+    if (f.name) byName.set(f.name, f);
+  }
+  const combined: FieldConfig[] = [];
+  if (config.fields) combined.push(...config.fields);
+  for (const sec of config.sections ?? []) {
+    for (const item of sec.fields) {
+      if (typeof item === 'string') {
+        const ref = byName.get(item);
+        if (ref && !combined.includes(ref)) combined.push(ref);
+      } else {
+        combined.push(item);
+      }
+    }
+  }
+  for (const step of config.steps ?? []) {
+    combined.push(...step.fields);
+  }
+  return combined;
 }
 
 function defaultEmptyForField(field: FieldConfig): unknown {
@@ -195,6 +515,11 @@ export class FormStore {
   private locale: string;
   private formDisabled: boolean;
   private formReadOnly: boolean;
+  private externalLoading: boolean;
+  private lastResetKey: string | number | undefined;
+  private enableReinitialize: boolean;
+  private keepDirtyOnReinitialize: boolean;
+  private lastExternalInitialValues: FormValues | undefined;
 
   private values: FormValues;
   private initialValues: FormValues;
@@ -252,6 +577,13 @@ export class FormStore {
     this.locale = options.locale ?? options.config.i18n?.locale ?? 'en';
     this.formDisabled = Boolean(options.disabled ?? options.config.disabled);
     this.formReadOnly = Boolean(options.readOnly ?? options.config.readOnly);
+    this.externalLoading = Boolean(options.loading);
+    this.lastResetKey = options.resetKey;
+    this.enableReinitialize = Boolean(options.enableReinitialize);
+    this.keepDirtyOnReinitialize = Boolean(options.keepDirtyOnReinitialize);
+    this.lastExternalInitialValues = options.initialValues
+      ? deepClone(options.initialValues)
+      : undefined;
 
     this.compiledPlan = compileFormSchema(this.config, {
       formulaRegistry: this.functionRegistry,
@@ -308,71 +640,439 @@ export class FormStore {
         shouldNotifyGlobal = true;
       }
     }
+    if (options.loading !== undefined) {
+      const nextLoading = Boolean(options.loading);
+      if (nextLoading !== this.externalLoading) {
+        this.externalLoading = nextLoading;
+        shouldNotifyGlobal = true;
+      }
+    }
+    if (options.enableReinitialize !== undefined) {
+      this.enableReinitialize = Boolean(options.enableReinitialize);
+    }
+    if (options.keepDirtyOnReinitialize !== undefined) {
+      this.keepDirtyOnReinitialize = Boolean(options.keepDirtyOnReinitialize);
+    }
+
+    let initializedByConfigOrKey = false;
+
     if (options.config && options.config !== this.config) {
       const prevId = this.config.id;
-      this.config = options.config;
-      this.compiledPlan = compileFormSchema(this.config, {
-        formulaRegistry: this.functionRegistry,
-        conditionRegistry: this.conditionRegistry,
-        bypassCache: Boolean(this.functionRegistry || this.conditionRegistry),
-      });
-      this.validationEngine.updateConfig(options.config);
-      this.sensitivePaths = collectSensitiveFieldPaths(this.config, this.config.security);
-      this.builtInSecretPaths = collectSensitiveFieldPaths(
-        this.config,
-        this.config.security,
-        '',
-        { builtInSecretsOnly: true }
-      );
-      this.indexFieldsAndDependencies();
+      const prevFingerprint = this.compiledPlan.fingerprint;
 
       if (options.config.id !== prevId) {
-        this.formValidationEpoch += 1;
-        this.submitEpoch += 1;
-        this.isSubmitting = false;
-        this.validationEngine.abortAsyncValidation();
-        const seeded = buildInitialFormValues(this.config, options.initialValues);
-        this.values = seeded;
-        this.errors = {};
-        this.formErrors = [];
-        this.dirtyFields = {};
-        this.touchedFields = {};
-        this.validatingFields = {};
-        this.fieldValueVersion = {};
-        this.fieldValidationSeq = {};
-        this.filesByField = {};
-        this.currentStepIndex = 0;
-        this.applyDefaultFormulas(options.initialValues);
-        this.recomputeAllComputedFields(false);
-        this.initialValues = deepClone(this.values);
-        for (const key of this.allFieldsMap.keys()) {
-          this.externalValueVersion[key] = (this.externalValueVersion[key] ?? 0) + 1;
-        }
+        this.config = options.config;
+        this.compiledPlan = compileFormSchema(this.config, {
+          formulaRegistry: this.functionRegistry,
+          conditionRegistry: this.conditionRegistry,
+          bypassCache: Boolean(this.functionRegistry || this.conditionRegistry),
+        });
+        this.validationEngine.updateConfig(options.config);
+        this.sensitivePaths = collectSensitiveFieldPaths(this.config, this.config.security);
+        this.builtInSecretPaths = collectSensitiveFieldPaths(
+          this.config,
+          this.config.security,
+          '',
+          { builtInSecretsOnly: true }
+        );
+        this.indexFieldsAndDependencies();
+
+        this.lastResetKey = options.resetKey;
+        this.lastExternalInitialValues = options.initialValues
+          ? deepClone(options.initialValues)
+          : undefined;
+
+        this.reinitializeFromExternalValues(options.initialValues, {
+          keepDirtyValues: false,
+          emitOnReset: false,
+        });
+        initializedByConfigOrKey = true;
+        shouldNotifyGlobal = true;
       } else {
-        // Same form ID (e.g. live custom form.json editing): seed defaults for newly added fields
-        const seeded = buildInitialFormValues(this.config);
-        for (const fieldPath of this.allFieldsMap.keys()) {
-          if (getByPath(this.values, fieldPath) === undefined) {
-            const nextDefault = getByPath(seeded, fieldPath);
-            if (nextDefault !== undefined) {
-              this.values = setByPath(this.values, fieldPath, nextDefault);
-              this.externalValueVersion[fieldPath] =
-                (this.externalValueVersion[fieldPath] ?? 0) + 1;
-            }
-          }
+        const candidatePlan = compileFormSchema(options.config, {
+          formulaRegistry: this.functionRegistry,
+          conditionRegistry: this.conditionRegistry,
+          bypassCache: Boolean(this.functionRegistry || this.conditionRegistry),
+        });
+        if (candidatePlan.fingerprint !== prevFingerprint) {
+          this.reconcileSchema(
+            options.config,
+            { renamedFields: options.renamedFields },
+            candidatePlan,
+            false
+          );
+          shouldNotifyGlobal = true;
+        } else {
+          this.config = options.config;
         }
-        const maxStep = Math.max(0, (this.config.steps?.length ?? 1) - 1);
-        if (this.currentStepIndex > maxStep) {
-          this.currentStepIndex = maxStep;
-        }
-        this.recomputeAllComputedFields(false);
       }
+    }
+
+    // Explicit external resetKey policy
+    if (
+      !initializedByConfigOrKey &&
+      'resetKey' in options &&
+      !Object.is(options.resetKey, this.lastResetKey)
+    ) {
+      this.lastResetKey = options.resetKey;
+      this.lastExternalInitialValues = options.initialValues
+        ? deepClone(options.initialValues)
+        : undefined;
+      this.reinitializeFromExternalValues(options.initialValues, {
+        keepDirtyValues: false,
+        emitOnReset: true,
+      });
+      initializedByConfigOrKey = true;
+      shouldNotifyGlobal = true;
+    }
+
+    // Opt-in deep-compared `enableReinitialize` policy (ignores identical object re-renders)
+    if (
+      !initializedByConfigOrKey &&
+      this.enableReinitialize &&
+      'initialValues' in options &&
+      !deepEqual(options.initialValues, this.lastExternalInitialValues)
+    ) {
+      this.lastExternalInitialValues = options.initialValues
+        ? deepClone(options.initialValues)
+        : undefined;
+      this.reinitializeFromExternalValues(options.initialValues, {
+        keepDirtyValues: this.keepDirtyOnReinitialize,
+        emitOnReset: false,
+      });
       shouldNotifyGlobal = true;
     }
 
     if (shouldNotifyGlobal) {
       this.bumpAndNotifyAll();
     }
+  }
+
+  private reinitializeFromExternalValues(
+    nextExternalInitial: FormValues | undefined,
+    opts: { keepDirtyValues: boolean; emitOnReset: boolean }
+  ): void {
+    this.fieldValidateDebouncers.forEach((d) => d.cancel());
+    this.validationEngine.abortAsyncValidation();
+    this.formValidationEpoch += 1;
+    this.submitEpoch += 1;
+    this.isSubmitting = false;
+    this.isAdvancingStep = false;
+
+    const preservedDirtySnapshots: Array<[string, unknown]> = [];
+    if (opts.keepDirtyValues) {
+      for (const [path, isDirty] of Object.entries(this.dirtyFields)) {
+        if (isDirty) {
+          preservedDirtySnapshots.push([path, deepClone(getByPath(this.values, path))]);
+        }
+      }
+    }
+
+    const seeded = buildInitialFormValues(this.config, nextExternalInitial);
+    this.values = seeded;
+    this.applyDefaultFormulas(nextExternalInitial);
+    this.recomputeAllComputedFields(false);
+    this.initialValues = deepClone(this.values);
+
+    const nextDirtyFields: Record<string, boolean> = {};
+    const nextTouchedFields: Record<string, boolean> = {};
+    const nextErrors: Record<string, string> = {};
+
+    if (opts.keepDirtyValues && preservedDirtySnapshots.length > 0) {
+      for (const [path, dirtyVal] of preservedDirtySnapshots) {
+        if (!this.isPathDefinedInCurrentSchema(path)) continue;
+        this.values = setByPath(this.values, path, dirtyVal);
+        const newInit = getByPath(this.initialValues, path);
+        if (!deepEqual(dirtyVal, newInit)) {
+          nextDirtyFields[path] = true;
+          if (this.touchedFields[path]) nextTouchedFields[path] = true;
+          if (this.errors[path]) nextErrors[path] = this.errors[path];
+        }
+      }
+      this.recomputeAllComputedFields(false);
+    } else {
+      this.filesByField = {};
+      this.currentStepIndex = 0;
+    }
+
+    this.errors = nextErrors;
+    this.formErrors = [];
+    this.dirtyFields = nextDirtyFields;
+    this.touchedFields = nextTouchedFields;
+    this.validatingFields = {};
+    this.fieldValidationSeq = {};
+    this.submitStatus = 'idle';
+
+    for (const p of this.allFieldsMap.keys()) {
+      this.externalValueVersion[p] = (this.externalValueVersion[p] ?? 0) + 1;
+      this.fieldValueVersion[p] = (this.fieldValueVersion[p] ?? 0) + 1;
+    }
+    for (const k of Object.keys(this.values)) {
+      this.externalValueVersion[k] = (this.externalValueVersion[k] ?? 0) + 1;
+      this.fieldValueVersion[k] = (this.fieldValueVersion[k] ?? 0) + 1;
+    }
+
+    if (opts.emitOnReset) {
+      this.callbacks.onReset?.(this.getValues());
+    }
+  }
+
+  private isPathDefinedInCurrentSchema(concretePath: string): boolean {
+    if (this.allFieldsMap.has(concretePath)) return true;
+    const wildcard = toWildcardTemplatePath(concretePath);
+    if (this.compiledPlan.nodes.has(wildcard)) return true;
+    // Allow concrete repeater item prefixes (`items.0`) when `items` is a repeater/arrayGroup
+    const rootSeg = concretePath.split('.')[0];
+    const rootField = this.allFieldsMap.get(rootSeg);
+    if (
+      rootField &&
+      (rootField.type === 'repeater' || rootField.type === 'arrayGroup') &&
+      /^\d+$/.test(concretePath.split('.')[1] ?? '')
+    ) {
+      const rest = concretePath.split('.').slice(2).join('.');
+      if (!rest) return true;
+      return this.compiledPlan.nodes.has(`${rootSeg}.*.${rest}`);
+    }
+    return false;
+  }
+
+  /**
+   * Reconciles runtime state (`values`, `initialValues`, `errors`, `dirtyFields`,
+   * `touchedFields`, `filesByField`, `currentStepIndex`) against a replacement
+   * `FormConfig` sharing the same form ID. Handles renamed, removed, modified, and
+   * newly added fields cleanly.
+   */
+  public reconcileSchema(
+    nextConfig: FormConfig,
+    options?: { renamedFields?: Record<string, string> },
+    precompiledPlan?: CompiledFormPlan,
+    notify = true
+  ): SchemaReconciliationReport {
+    const prevConfig = this.config;
+    const prevFieldsMap = new Map(this.allFieldsMap);
+    const prevNodesMap = new Map(this.compiledPlan.nodes);
+
+    this.validationEngine.abortAsyncValidation();
+    this.formValidationEpoch += 1;
+
+    this.config = nextConfig;
+    this.compiledPlan =
+      precompiledPlan ??
+      compileFormSchema(this.config, {
+        formulaRegistry: this.functionRegistry,
+        conditionRegistry: this.conditionRegistry,
+        bypassCache: Boolean(this.functionRegistry || this.conditionRegistry),
+      });
+    this.validationEngine.updateConfig(this.config);
+    this.sensitivePaths = collectSensitiveFieldPaths(this.config, this.config.security);
+    this.builtInSecretPaths = collectSensitiveFieldPaths(
+      this.config,
+      this.config.security,
+      '',
+      { builtInSecretsOnly: true }
+    );
+    this.indexFieldsAndDependencies();
+
+    const report: SchemaReconciliationReport = {
+      addedFields: [],
+      removedFields: [],
+      renamedFields: [],
+      modifiedFields: [],
+      preservedFields: [],
+    };
+
+    const renameOldToNew = new Map<string, string>();
+    const renameNewToOld = new Map<string, string>();
+    for (const [oldPath, newPath] of Object.entries(options?.renamedFields ?? {})) {
+      if (oldPath && newPath && oldPath !== newPath && this.isPathDefinedInCurrentSchema(newPath)) {
+        renameOldToNew.set(oldPath, newPath);
+        renameNewToOld.set(newPath, oldPath);
+      }
+    }
+
+    // 1. Apply explicit field renames (`oldPath -> newPath`) before pruning obsolete paths
+    for (const [oldPath, newPath] of renameOldToNew.entries()) {
+      const oldVal = getByPath(this.values, oldPath);
+      const oldInit = getByPath(this.initialValues, oldPath);
+      if (oldVal !== undefined && getByPath(this.values, newPath) === undefined) {
+        this.values = setByPath(this.values, newPath, deepClone(oldVal));
+      }
+      this.values = deleteByPath(this.values, oldPath);
+
+      if (oldInit !== undefined && getByPath(this.initialValues, newPath) === undefined) {
+        this.initialValues = setByPath(this.initialValues, newPath, deepClone(oldInit));
+      }
+      this.initialValues = deleteByPath(this.initialValues, oldPath);
+
+      if (this.dirtyFields[oldPath] !== undefined) {
+        this.dirtyFields[newPath] = this.dirtyFields[oldPath];
+        delete this.dirtyFields[oldPath];
+      }
+      if (this.touchedFields[oldPath] !== undefined) {
+        this.touchedFields[newPath] = this.touchedFields[oldPath];
+        delete this.touchedFields[oldPath];
+      }
+      if (this.errors[oldPath] !== undefined) {
+        this.errors[newPath] = this.errors[oldPath];
+        delete this.errors[oldPath];
+      }
+      if (this.filesByField[oldPath] !== undefined) {
+        this.filesByField[newPath] = this.filesByField[oldPath];
+        delete this.filesByField[oldPath];
+      }
+      this.externalValueVersion[newPath] = (this.externalValueVersion[newPath] ?? 0) + 1;
+      this.markFieldMutated(newPath);
+      report.renamedFields.push({ from: oldPath, to: newPath });
+    }
+
+    // 2. Record removed fields & prune obsolete paths from `values` and `initialValues`
+    for (const oldPath of prevNodesMap.keys()) {
+      if (renameOldToNew.has(oldPath)) continue;
+      if (!this.compiledPlan.nodes.has(oldPath)) {
+        report.removedFields.push(oldPath);
+      }
+    }
+
+    const topValueFields = collectTopValueFieldsForPruning(this.config);
+    this.values = pruneValuesAgainstFields(this.values, topValueFields);
+    this.initialValues = pruneValuesAgainstFields(this.initialValues, topValueFields);
+
+    // Prune metadata maps for any removed/obsolete concrete paths
+    const pruneRecordKeys = (rec: Record<string, unknown>) => {
+      for (const key of Object.keys(rec)) {
+        if (!this.isPathDefinedInCurrentSchema(key)) {
+          delete rec[key];
+        }
+      }
+    };
+    pruneRecordKeys(this.errors);
+    pruneRecordKeys(this.dirtyFields);
+    pruneRecordKeys(this.touchedFields);
+    pruneRecordKeys(this.validatingFields);
+    pruneRecordKeys(this.filesByField);
+    pruneRecordKeys(this.fieldValueVersion);
+    pruneRecordKeys(this.fieldValidationSeq);
+    pruneRecordKeys(this.externalValueVersion);
+
+    for (const [debouncedPath, debouncer] of this.fieldValidateDebouncers.entries()) {
+      if (!this.isPathDefinedInCurrentSchema(debouncedPath)) {
+        debouncer.cancel();
+        this.fieldValidateDebouncers.delete(debouncedPath);
+      }
+    }
+
+    if (this.focusedField && !this.isPathDefinedInCurrentSchema(this.focusedField)) {
+      this.focusedField = null;
+    }
+
+    // 3. Reconcile added & modified fields
+    const seeded = buildInitialFormValues(this.config);
+    for (const [path, nextNode] of this.compiledPlan.nodes.entries()) {
+      const nextField = nextNode.field;
+      const sourceOldPath = renameNewToOld.get(path) ?? path;
+      const prevNode = prevNodesMap.get(sourceOldPath);
+      const prevField = prevNode?.field ?? prevFieldsMap.get(sourceOldPath);
+
+      if (!prevNode && !renameNewToOld.has(path)) {
+        report.addedFields.push(path);
+        if (!nextNode.isRepeaterTemplate) {
+          const nextDefault = getByPath(seeded, path);
+          if (getByPath(this.values, path) === undefined && nextDefault !== undefined) {
+            this.values = setByPath(this.values, path, deepClone(nextDefault));
+          }
+          if (getByPath(this.initialValues, path) === undefined && nextDefault !== undefined) {
+            this.initialValues = setByPath(this.initialValues, path, deepClone(nextDefault));
+          }
+          this.externalValueVersion[path] = (this.externalValueVersion[path] ?? 0) + 1;
+        }
+        continue;
+      }
+
+      const fieldChanged =
+        Boolean(prevField) &&
+        (prevField!.type !== nextField.type ||
+          !deepEqual(prevField!.options, nextField.options) ||
+          !deepEqual(prevField!.formula, nextField.formula) ||
+          !deepEqual(prevField!.computed, nextField.computed) ||
+          !deepEqual(prevField!.validation, nextField.validation) ||
+          prevField!.required !== nextField.required ||
+          !deepEqual(
+            prevConfig.defaults?.[sourceOldPath] ?? prevField!.defaultValue,
+            this.config.defaults?.[path] ?? nextField.defaultValue
+          ));
+
+      if (fieldChanged) {
+        report.modifiedFields.push(path);
+      } else {
+        report.preservedFields.push(path);
+      }
+
+      if (!nextNode.isRepeaterTemplate) {
+        const currentVal = getByPath(this.values, path);
+        const seededDefault = getByPath(seeded, path);
+        const coerced = coerceReconciledFieldValue(
+          currentVal,
+          prevField,
+          nextField,
+          seededDefault
+        );
+
+        if (
+          nextField.type === 'calculated' ||
+          nextField.type === 'computed' ||
+          nextField.formula ||
+          nextField.computed
+        ) {
+          delete this.dirtyFields[path];
+          delete this.errors[path];
+          delete this.filesByField[path];
+        } else if (coerced.replaced) {
+          if (coerced.value === undefined) {
+            this.values = deleteByPath(this.values, path);
+          } else {
+            this.values = setByPath(this.values, path, coerced.value);
+          }
+          if (seededDefault !== undefined) {
+            this.initialValues = setByPath(this.initialValues, path, deepClone(seededDefault));
+          } else {
+            this.initialValues = deleteByPath(this.initialValues, path);
+          }
+          delete this.dirtyFields[path];
+          delete this.touchedFields[path];
+          delete this.errors[path];
+          if (!UPLOAD_FIELD_TYPES.has(nextField.type)) {
+            delete this.filesByField[path];
+          }
+          this.externalValueVersion[path] = (this.externalValueVersion[path] ?? 0) + 1;
+          this.markFieldMutated(path);
+        } else if (this.errors[path]) {
+          // Re-check existing error against updated validation rules
+          const syncRes = this.validationEngine.validateSync(this.values, {
+            onlyFields: [path],
+            locale: this.locale,
+          });
+          if (syncRes.errors[path]) {
+            this.errors[path] = syncRes.errors[path];
+          } else {
+            delete this.errors[path];
+          }
+        }
+      }
+    }
+
+    // 4. Seed defaultFormulas for newly added undefined paths & recompute formulas
+    this.applyDefaultFormulas(this.values);
+    const maxStep = Math.max(0, this.getVisibleSteps().length - 1);
+    if (this.currentStepIndex > maxStep) {
+      this.currentStepIndex = maxStep;
+    }
+    this.recomputeAllComputedFields(false);
+
+    if (notify) {
+      this.bumpAndNotifyAll();
+    }
+
+    return report;
   }
 
   private collectAllConfiguredFields(config: FormConfig): FieldConfig[] {
@@ -1333,20 +2033,29 @@ export class FormStore {
     this.notifyPaths(prevPaths);
   }
 
+  private fieldHasAsyncValidation(fieldPath: string): boolean {
+    const node =
+      this.compiledPlan.nodes.get(fieldPath) ??
+      this.compiledPlan.nodes.get(toWildcardTemplatePath(fieldPath));
+    if (node && node.asyncRules.length > 0) return true;
+    const f = this.allFieldsMap.get(fieldPath);
+    return Boolean(f?.validation?.async);
+  }
+
   public async validate(
     fieldPath?: string,
     trigger: 'onBlur' | 'onChange' | 'onSubmit' = 'onSubmit'
   ): Promise<ValidationResult> {
     const onlyFields = fieldPath ? [fieldPath] : undefined;
     const myEpoch = this.formValidationEpoch;
-    const valuesSnapshot = deepClone(this.values);
 
     if (fieldPath) {
+      const valuesSnapshot = deepClone(this.values);
       const startValueVer = this.fieldValueVersion[fieldPath] ?? 0;
       const reqSeq = (this.fieldValidationSeq[fieldPath] =
         (this.fieldValidationSeq[fieldPath] ?? 0) + 1);
 
-      if (this.allFieldsMap.get(fieldPath)?.validation?.async) {
+      if (this.fieldHasAsyncValidation(fieldPath)) {
         this.validatingFields[fieldPath] = true;
         this.notifyPaths([fieldPath]);
       }
@@ -1393,88 +2102,149 @@ export class FormStore {
       return result;
     }
 
-    // Full-form validation
-    const startFieldVersions: Record<string, number> = { ...this.fieldValueVersion };
-    const asyncFieldPaths: string[] = [];
-    const startSeqByField: Record<string, number> = {};
+    // Full-form validation with bounded stabilization against mid-flight async value mutations
+    const MAX_STABILIZATION_PASSES = 3;
+    let finalResult: ValidationResult | null = null;
+    const allTouchedAsyncPaths = new Set<string>();
 
-    for (const d of collectActiveFields(this.config, valuesSnapshot)) {
-      if (d.parentVisible && d.field.validation?.async) {
-        asyncFieldPaths.push(d.path);
-        const seq = (this.fieldValidationSeq[d.path] =
-          (this.fieldValidationSeq[d.path] ?? 0) + 1);
-        startSeqByField[d.path] = seq;
-        this.validatingFields[d.path] = true;
-      }
-    }
-    if (asyncFieldPaths.length > 0) {
-      this.notifyPaths(asyncFieldPaths);
-    }
+    for (let pass = 0; pass < MAX_STABILIZATION_PASSES; pass += 1) {
+      const valuesSnapshot = deepClone(this.values);
+      const startFieldVersions: Record<string, number> = { ...this.fieldValueVersion };
+      const asyncFieldPaths: string[] = [];
+      const startSeqByField: Record<string, number> = {};
 
-    const result = await this.validationEngine.validateAsync(
-      valuesSnapshot,
-      this.asyncValidators,
-      {
-        onlyFields,
-        trigger,
-        locale: this.locale,
-        isFieldStale: (p, validatedValue) =>
-          this.formValidationEpoch !== myEpoch ||
-          (this.fieldValueVersion[p] ?? 0) !== (startFieldVersions[p] ?? 0) ||
-          !deepEqual(getByPath(this.values, p), validatedValue),
-      }
-    );
-
-    if (this.formValidationEpoch !== myEpoch) {
-      return this.validationEngine.validateSync(this.values, { locale: this.locale });
-    }
-
-    for (const p of asyncFieldPaths) {
-      if (this.fieldValidationSeq[p] === startSeqByField[p]) {
-        this.validatingFields[p] = false;
-      }
-    }
-
-    // If any field changed while full-form async validation was in flight, re-merge current sync state for mutated fields
-    const mutatedDuringAwait = Object.keys(this.fieldValueVersion).filter(
-      (p) => (this.fieldValueVersion[p] ?? 0) !== (startFieldVersions[p] ?? 0)
-    );
-
-    let finalResult = result;
-    if (mutatedDuringAwait.length > 0) {
-      const freshMutated = this.validationEngine.validateSync(this.values, {
-        onlyFields: mutatedDuringAwait,
-        locale: this.locale,
-      });
-      const mergedErrors = { ...result.errors };
-      const mergedDetails = { ...result.errorDetails };
-      for (const p of mutatedDuringAwait) {
-        if (freshMutated.errors[p]) {
-          mergedErrors[p] = freshMutated.errors[p];
-          mergedDetails[p] = freshMutated.errorDetails[p];
-        } else {
-          delete mergedErrors[p];
-          delete mergedDetails[p];
+      for (const d of collectActiveFields(this.config, valuesSnapshot)) {
+        if (
+          d.parentVisible &&
+          (d.field.validation?.async || this.fieldHasAsyncValidation(d.path))
+        ) {
+          asyncFieldPaths.push(d.path);
+          allTouchedAsyncPaths.add(d.path);
+          const seq = (this.fieldValidationSeq[d.path] =
+            (this.fieldValidationSeq[d.path] ?? 0) + 1);
+          startSeqByField[d.path] = seq;
+          this.validatingFields[d.path] = true;
         }
       }
-      const firstErrorField =
-        Object.keys(mergedErrors)[0] ?? freshMutated.firstErrorField ?? undefined;
+      if (asyncFieldPaths.length > 0) {
+        this.notifyPaths(asyncFieldPaths);
+      }
+
+      const result = await this.validationEngine.validateAsync(
+        valuesSnapshot,
+        this.asyncValidators,
+        {
+          onlyFields,
+          trigger,
+          locale: this.locale,
+          isFieldStale: (p, validatedValue) =>
+            this.formValidationEpoch !== myEpoch ||
+            (this.fieldValueVersion[p] ?? 0) !== (startFieldVersions[p] ?? 0) ||
+            !deepEqual(getByPath(this.values, p), validatedValue),
+        }
+      );
+
+      if (this.formValidationEpoch !== myEpoch) {
+        return this.validationEngine.validateSync(this.values, { locale: this.locale });
+      }
+
+      for (const p of asyncFieldPaths) {
+        if (this.fieldValidationSeq[p] === startSeqByField[p]) {
+          this.validatingFields[p] = false;
+        }
+      }
+
+      const mutatedDuringAwait = Object.keys(this.fieldValueVersion).filter(
+        (p) => (this.fieldValueVersion[p] ?? 0) !== (startFieldVersions[p] ?? 0)
+      );
+
+      if (mutatedDuringAwait.length === 0) {
+        finalResult = result;
+        break;
+      }
+
+      // Check whether any mutated field (or dependent async field) requires async re-verification
+      const mutatedRequiresAsync = mutatedDuringAwait.some((mutPath) => {
+        if (this.fieldHasAsyncValidation(mutPath)) return true;
+        const plan = this.compiledPlan.graph.getEvaluationPlan([mutPath], this.values);
+        return plan.validationsToReRun.some((depPath) =>
+          this.fieldHasAsyncValidation(depPath)
+        );
+      });
+
+      if (mutatedRequiresAsync) {
+        if (pass < MAX_STABILIZATION_PASSES - 1) {
+          continue;
+        }
+        // Fail closed after max stabilization passes so unverified async edits never submit
+        const freshSync = this.validationEngine.validateSync(this.values, {
+          locale: this.locale,
+        });
+        const mergedErrors = { ...result.errors, ...freshSync.errors };
+        const mergedDetails = { ...result.errorDetails, ...freshSync.errorDetails };
+        for (const mutPath of mutatedDuringAwait) {
+          if (this.fieldHasAsyncValidation(mutPath) && !mergedErrors[mutPath]) {
+            const pendingMsg = 'Validation in progress; please wait for verification to finish.';
+            mergedErrors[mutPath] = pendingMsg;
+            mergedDetails[mutPath] = [
+              {
+                field: mutPath,
+                rule: 'asyncPending',
+                message: pendingMsg,
+                source: 'async',
+              },
+            ];
+          }
+        }
+        finalResult = {
+          valid: false,
+          errors: mergedErrors,
+          errorDetails: mergedDetails,
+          formErrors: [...freshSync.formErrors],
+          firstErrorField: Object.keys(mergedErrors)[0],
+        };
+        break;
+      }
+
+      // Only purely synchronous fields changed: re-run full sync validation (including cross-field & AJV)
+      // and preserve verified async errors on non-mutated fields.
+      const freshSyncFull = this.validationEngine.validateSync(this.values, {
+        locale: this.locale,
+      });
+      const mergedErrors = { ...freshSyncFull.errors };
+      const mergedDetails = { ...freshSyncFull.errorDetails };
+      for (const [errPath, errMsg] of Object.entries(result.errors)) {
+        if (!mutatedDuringAwait.includes(errPath) && !mergedErrors[errPath]) {
+          mergedErrors[errPath] = errMsg;
+          mergedDetails[errPath] = result.errorDetails[errPath];
+        }
+      }
       finalResult = {
-        valid: Object.keys(mergedErrors).length === 0 && result.formErrors.length === 0,
+        valid:
+          Object.keys(mergedErrors).length === 0 && freshSyncFull.formErrors.length === 0,
         errors: mergedErrors,
         errorDetails: mergedDetails,
-        formErrors: [...result.formErrors],
-        firstErrorField,
+        formErrors: [...freshSyncFull.formErrors],
+        firstErrorField:
+          Object.keys(mergedErrors)[0] ?? freshSyncFull.firstErrorField ?? undefined,
       };
+      break;
     }
 
-    const prevKeys = Object.keys(this.errors);
-    this.errors = { ...finalResult.errors };
-    this.formErrors = [...finalResult.formErrors];
-    this.notifyPaths([...prevKeys, ...Object.keys(finalResult.errors), ...asyncFieldPaths]);
+    const resolvedResult =
+      finalResult ?? this.validationEngine.validateSync(this.values, { locale: this.locale });
 
-    this.callbacks.onValidation?.(finalResult);
-    return finalResult;
+    const prevKeys = Object.keys(this.errors);
+    this.errors = { ...resolvedResult.errors };
+    this.formErrors = [...resolvedResult.formErrors];
+    this.notifyPaths([
+      ...prevKeys,
+      ...Object.keys(resolvedResult.errors),
+      ...Array.from(allTouchedAsyncPaths),
+    ]);
+
+    this.callbacks.onValidation?.(resolvedResult);
+    return resolvedResult;
   }
 
   private announceError(message: string): void {
@@ -1513,7 +2283,7 @@ export class FormStore {
   }
 
   public async nextStep(): Promise<boolean> {
-    if (this.isAdvancingStep || this.isSubmitting) return false;
+    if (this.isAdvancingStep || this.isSubmitting || this.externalLoading) return false;
     const steps = this.getVisibleSteps();
     if (steps.length === 0 || this.currentStepIndex >= steps.length - 1) return false;
 
@@ -1523,55 +2293,76 @@ export class FormStore {
     try {
       const currentStep = steps[this.currentStepIndex];
       if (currentStep.validateBeforeNext !== false) {
-        const stepDescriptors = collectActiveFields(
-          { id: this.config.id, fields: currentStep.fields },
-          this.values
-        );
-        const stepFieldPaths = stepDescriptors
-          .filter((d) => d.parentVisible)
-          .map((d) => d.path);
+        let stepVerified = false;
 
-        for (const p of stepFieldPaths) {
-          this.touchedFields[p] = true;
-        }
+        for (let pass = 0; pass < 2; pass += 1) {
+          const stepDescriptors = collectActiveFields(
+            { id: this.config.id, fields: currentStep.fields },
+            this.values
+          );
+          const stepFieldPaths = stepDescriptors
+            .filter((d) => d.parentVisible)
+            .map((d) => d.path);
 
-        const startVersions: Record<string, number> = {};
-        for (const p of stepFieldPaths) {
-          startVersions[p] = this.fieldValueVersion[p] ?? 0;
-        }
-
-        const res = await this.validationEngine.validateAsync(
-          deepClone(this.values),
-          this.asyncValidators,
-          {
-            onlyFields: stepFieldPaths,
-            trigger: 'onSubmit',
-            locale: this.locale,
-            isFieldStale: (p, validatedValue) =>
-              this.formValidationEpoch !== myEpoch ||
-              (this.fieldValueVersion[p] ?? 0) !== (startVersions[p] ?? 0) ||
-              !deepEqual(getByPath(this.values, p), validatedValue),
+          for (const p of stepFieldPaths) {
+            this.touchedFields[p] = true;
           }
-        );
 
-        if (this.formValidationEpoch !== myEpoch) {
-          return false;
-        }
-
-        for (const p of stepFieldPaths) {
-          if ((this.fieldValueVersion[p] ?? 0) !== (startVersions[p] ?? 0)) continue;
-          if (res.errors[p]) this.errors[p] = res.errors[p];
-          else delete this.errors[p];
-        }
-        this.notifyPaths(stepFieldPaths);
-
-        if (!res.valid) {
-          if (res.firstErrorField) {
-            this.handleInvalidFocusAndScroll(
-              res.firstErrorField,
-              res.errors[res.firstErrorField]
-            );
+          const startVersions: Record<string, number> = {};
+          for (const p of stepFieldPaths) {
+            startVersions[p] = this.fieldValueVersion[p] ?? 0;
           }
+
+          const res = await this.validationEngine.validateAsync(
+            deepClone(this.values),
+            this.asyncValidators,
+            {
+              onlyFields: stepFieldPaths,
+              trigger: 'onSubmit',
+              locale: this.locale,
+              isFieldStale: (p, validatedValue) =>
+                this.formValidationEpoch !== myEpoch ||
+                (this.fieldValueVersion[p] ?? 0) !== (startVersions[p] ?? 0) ||
+                !deepEqual(getByPath(this.values, p), validatedValue),
+            }
+          );
+
+          if (this.formValidationEpoch !== myEpoch) {
+            return false;
+          }
+
+          const stepMutatedDuringAwait = stepFieldPaths.some(
+            (p) => (this.fieldValueVersion[p] ?? 0) !== (startVersions[p] ?? 0)
+          );
+
+          if (stepMutatedDuringAwait) {
+            if (pass === 0) {
+              continue;
+            }
+            // Step values kept mutating across retries; refuse advancing with unverified input
+            return false;
+          }
+
+          for (const p of stepFieldPaths) {
+            if (res.errors[p]) this.errors[p] = res.errors[p];
+            else delete this.errors[p];
+          }
+          this.notifyPaths(stepFieldPaths);
+
+          if (!res.valid) {
+            if (res.firstErrorField) {
+              this.handleInvalidFocusAndScroll(
+                res.firstErrorField,
+                res.errors[res.firstErrorField]
+              );
+            }
+            return false;
+          }
+          stepVerified = true;
+          break;
+        }
+
+        if (!stepVerified) {
           return false;
         }
       }
@@ -1656,7 +2447,10 @@ export class FormStore {
 
   public async submit(): Promise<boolean> {
     const preventDup = this.config.submit?.preventDuplicateSubmit ?? true;
-    if (preventDup && (this.isSubmitting || this.submitStatus === 'loading')) {
+    if (
+      this.externalLoading ||
+      (preventDup && (this.isSubmitting || this.submitStatus === 'loading'))
+    ) {
       return false;
     }
 
@@ -1680,23 +2474,45 @@ export class FormStore {
 
       this.bumpAndNotifyAll();
 
+      let submitValues = this.getValues();
+
       if (this.config.validation?.validateOnSubmit !== false) {
-        const result = await this.validate(undefined, 'onSubmit');
-        if (this.submitEpoch !== mySubmitEpoch) {
-          return false;
+        let verifiedSnapshot: FormValues | null = null;
+
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const preValidateVersions = { ...this.fieldValueVersion };
+          const result = await this.validate(undefined, 'onSubmit');
+          if (this.submitEpoch !== mySubmitEpoch) {
+            return false;
+          }
+          if (!result.valid) {
+            this.submitStatus = 'failure';
+            this.bumpAndNotifyAll();
+            if (result.firstErrorField) {
+              this.handleInvalidFocusAndScroll(
+                result.firstErrorField,
+                result.errors[result.firstErrorField]
+              );
+            }
+            this.callbacks.onInvalid?.(result.errors, result, this.getValues());
+            return false;
+          }
+
+          const postMutated = Object.keys(this.fieldValueVersion).some(
+            (p) => (this.fieldValueVersion[p] ?? 0) !== (preValidateVersions[p] ?? 0)
+          );
+          if (!postMutated) {
+            verifiedSnapshot = this.getValues();
+            break;
+          }
         }
-        if (!result.valid) {
+
+        if (!verifiedSnapshot) {
           this.submitStatus = 'failure';
           this.bumpAndNotifyAll();
-          if (result.firstErrorField) {
-            this.handleInvalidFocusAndScroll(
-              result.firstErrorField,
-              result.errors[result.firstErrorField]
-            );
-          }
-          this.callbacks.onInvalid?.(result.errors, result, this.getValues());
           return false;
         }
+        submitValues = verifiedSnapshot;
       }
 
       const helpers: FormSubmitHelpers = {
@@ -1706,8 +2522,6 @@ export class FormStore {
         setServerErrors: (errs, fErrs) => this.setServerErrors(errs, fErrs),
         setValue: (field, val) => this.setValue(field, val),
       };
-
-      const submitValues = this.getValues();
 
       // Invoke registered JSON action if specified
       const submitActionId = this.config.submit?.actionId;
