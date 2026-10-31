@@ -1,7 +1,11 @@
 import {
+  createContext,
   forwardRef,
   useCallback,
+  useContext,
   useImperativeHandle,
+  useMemo,
+  useRef,
   type ReactNode,
 } from 'react';
 import { Keyboard } from 'react-native';
@@ -15,7 +19,10 @@ import {
 import {
   getPlatformFieldAnchorModifiers,
   getPlatformScrollContainerModifiers,
+  type AnchorLayoutRect,
+  type PlatformScrollAnchorHandle,
 } from '../core/nativePlatformBridge';
+import type { ScrollToFieldOptions } from '../state/FormStore';
 import type {
   FieldRendererProps,
   FieldType,
@@ -25,8 +32,24 @@ import type {
 
 export type FieldReturnKeyType = NonNullable<FieldRendererProps['returnKeyType']>;
 
+export interface ScrollAnchorRegistryValue {
+  registerAnchor: (anchorId: string, handle: PlatformScrollAnchorHandle | null) => void;
+  reportAnchorLayout: (anchorId: string, rect: AnchorLayoutRect) => void;
+  getAnchorLayout: (anchorId: string) => AnchorLayoutRect | undefined;
+}
+
+export const ScrollAnchorRegistryContext = createContext<ScrollAnchorRegistryValue | null>(
+  null
+);
+
+export function useScrollAnchorRegistry(): ScrollAnchorRegistryValue | null {
+  return useContext(ScrollAnchorRegistryContext);
+}
+
 export interface KeyboardScrollHandle {
-  scrollToField: (fieldPath: string) => void;
+  scrollToField: (fieldPath: string, options?: ScrollToFieldOptions) => void;
+  getMeasuredFieldLayout?: (fieldPath: string) => AnchorLayoutRect | undefined;
+  getMeasuredContainerLayout?: () => AnchorLayoutRect | undefined;
 }
 
 export interface KeyboardLayoutAdapterProps {
@@ -43,8 +66,14 @@ export function getFieldScrollAnchorId(fieldPath: string): string {
   return `expo-form-field-${fieldPath}`;
 }
 
-export function buildFieldScrollTargetModifiers(fieldPath: string): any[] {
-  return getPlatformFieldAnchorModifiers(getFieldScrollAnchorId(fieldPath));
+export function buildFieldScrollTargetModifiers(
+  fieldPath: string,
+  onAnchorMeasured?: (rect: AnchorLayoutRect) => void
+): any[] {
+  return getPlatformFieldAnchorModifiers(
+    getFieldScrollAnchorId(fieldPath),
+    onAnchorMeasured
+  );
 }
 
 export function shouldUseLazyListRendering(
@@ -118,11 +147,61 @@ export const KeyboardLayoutAdapter = forwardRef<
   ref
 ) {
   const scrollTargetState = useNativeState<string | null>(null);
+  const anchorHandlesRef = useRef<Map<string, PlatformScrollAnchorHandle>>(new Map());
+  const anchorLayoutsRef = useRef<Map<string, AnchorLayoutRect>>(new Map());
+  const containerLayoutRef = useRef<AnchorLayoutRect | undefined>(undefined);
+
+  const registerAnchor = useCallback(
+    (anchorId: string, handle: PlatformScrollAnchorHandle | null) => {
+      if (handle) {
+        anchorHandlesRef.current.set(anchorId, handle);
+      } else {
+        anchorHandlesRef.current.delete(anchorId);
+      }
+    },
+    []
+  );
+
+  const reportAnchorLayout = useCallback((anchorId: string, rect: AnchorLayoutRect) => {
+    anchorLayoutsRef.current.set(anchorId, rect);
+  }, []);
+
+  const getAnchorLayout = useCallback(
+    (anchorId: string) => anchorLayoutsRef.current.get(anchorId),
+    []
+  );
+
+  const handleContainerMeasured = useCallback((rect: AnchorLayoutRect) => {
+    containerLayoutRef.current = rect;
+  }, []);
+
+  const scrollRegistryValue = useMemo<ScrollAnchorRegistryValue>(
+    () => ({
+      registerAnchor,
+      reportAnchorLayout,
+      getAnchorLayout,
+    }),
+    [registerAnchor, reportAnchorLayout, getAnchorLayout]
+  );
 
   const scrollToField = useCallback(
-    (fieldPath: string) => {
+    (fieldPath: string, options?: ScrollToFieldOptions) => {
       const anchorId = getFieldScrollAnchorId(fieldPath);
+
+      // Reset first if re-targeting the same anchor so SwiftUI `scrollPosition` observes a transition
+      if (scrollTargetState.get() === anchorId) {
+        scrollTargetState.set(null);
+      }
       scrollTargetState.set(anchorId);
+
+      // Android Jetpack Compose: invoke registered Compose BringIntoView anchor when field's own
+      // focus handle is not already about to be focused (covers non-text fields & focusFirstError=false)
+      if (!options?.willFocusField) {
+        const androidAnchor = anchorHandlesRef.current.get(anchorId);
+        if (androidAnchor) {
+          void androidAnchor.bringIntoView();
+        }
+      }
 
       if (typeof document !== 'undefined') {
         const el =
@@ -143,6 +222,9 @@ export const KeyboardLayoutAdapter = forwardRef<
     ref,
     () => ({
       scrollToField,
+      getMeasuredFieldLayout: (fieldPath: string) =>
+        anchorLayoutsRef.current.get(getFieldScrollAnchorId(fieldPath)),
+      getMeasuredContainerLayout: () => containerLayoutRef.current,
     }),
     [scrollToField]
   );
@@ -158,7 +240,8 @@ export const KeyboardLayoutAdapter = forwardRef<
   const { scrollModifiers, contentModifiers } = getPlatformScrollContainerModifiers(
     dismissOnDrag,
     scrollTargetState,
-    keyboardAware
+    keyboardAware,
+    handleContainerMeasured
   );
 
   const paddedStyle: UniversalStyle = {
@@ -173,15 +256,17 @@ export const KeyboardLayoutAdapter = forwardRef<
   };
 
   const content = (
-    <Column
-      spacing={formGap}
-      alignment={formAlignment}
-      style={paddedStyle}
-      modifiers={[...contentModifiers, ...formModifiers]}
-      testID={testID ?? 'expo-form-content'}
-    >
-      {children}
-    </Column>
+    <ScrollAnchorRegistryContext.Provider value={scrollRegistryValue}>
+      <Column
+        spacing={formGap}
+        alignment={formAlignment}
+        style={paddedStyle}
+        modifiers={[...contentModifiers, ...formModifiers]}
+        testID={testID ?? 'expo-form-content'}
+      >
+        {children}
+      </Column>
+    </ScrollAnchorRegistryContext.Provider>
   );
 
   if (!scrollEnabled) {

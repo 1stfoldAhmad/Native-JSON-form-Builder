@@ -163,11 +163,15 @@ export function evaluateCondition(
 
   if (clause.matches !== undefined) {
     if (typeof actual !== 'string') return false;
-    const regex =
-      typeof clause.matches === 'string'
-        ? new RegExp(clause.matches)
-        : new RegExp(clause.matches.pattern, clause.matches.flags);
-    if (!regex.test(actual)) return false;
+    try {
+      const regex =
+        typeof clause.matches === 'string'
+          ? new RegExp(clause.matches)
+          : new RegExp(clause.matches.pattern, clause.matches.flags);
+      if (!regex.test(actual)) return false;
+    } catch {
+      return false;
+    }
   }
 
   if (clause.isEmpty !== undefined) {

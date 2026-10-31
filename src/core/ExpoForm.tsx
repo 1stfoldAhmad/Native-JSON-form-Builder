@@ -6,7 +6,7 @@ import { useReducedMotion } from '../animations/AnimationAdapter';
 import { defaultFieldRegistry } from '../fields/FieldRegistry';
 import type { KeyboardScrollHandle } from '../keyboard/KeyboardLayoutAdapter';
 import { FormRenderer } from '../renderer/FormRenderer';
-import { FormStore } from '../state/FormStore';
+import { FormStore, type ScrollToFieldOptions } from '../state/FormStore';
 import { resolvePalette } from '../styles/StyleResolver';
 import type {
   ExpoFormProps,
@@ -132,9 +132,12 @@ export function ExpoForm<TValues extends FormValues = FormValues>({
     [effectiveTheme, activeColorScheme]
   );
 
-  const scrollToField = useCallback((fieldPath: string) => {
-    scrollHandleRef.current?.scrollToField(fieldPath);
-  }, []);
+  const scrollToField = useCallback(
+    (fieldPath: string, options?: ScrollToFieldOptions) => {
+      scrollHandleRef.current?.scrollToField(fieldPath, options);
+    },
+    []
+  );
 
   const fallbackConfig: FormConfig = parsed.config ?? {
     id: '__invalid_config__',

@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useCallback, useMemo, type ReactNode } from 'react';
 import { Column, Row, Spacer, Text } from '@expo/ui';
 
 import {
@@ -6,10 +6,15 @@ import {
   resolveAnimationTrigger,
 } from '../animations/AnimationAdapter';
 import { useActiveForm } from '../core/context';
-import { getPlatformFieldA11yModifiers } from '../core/nativePlatformBridge';
+import {
+  getPlatformFieldA11yModifiers,
+  renderPlatformScrollAnchor,
+  type AnchorLayoutRect,
+} from '../core/nativePlatformBridge';
 import {
   buildFieldScrollTargetModifiers,
   getFieldScrollAnchorId,
+  useScrollAnchorRegistry,
 } from '../keyboard/KeyboardLayoutAdapter';
 import type { FieldConfig, ResolvedFieldStyles } from '../types';
 import { resolveLocalizedText } from '../utils/formatting';
@@ -71,9 +76,24 @@ export function FieldWrapper({
   ]);
 
   const a11yHint = field.accessibility?.hint ?? helperText ?? descriptionText;
+  const scrollRegistry = useScrollAnchorRegistry();
+  const anchorId = getFieldScrollAnchorId(fieldPath);
+  const reportAnchorLayout = scrollRegistry?.reportAnchorLayout;
+
+  const handleAnchorMeasured = useCallback(
+    (rect: AnchorLayoutRect) => {
+      reportAnchorLayout?.(anchorId, rect);
+    },
+    [reportAnchorLayout, anchorId]
+  );
 
   const wrapperModifiers = useMemo(() => {
-    const mods: any[] = [...buildFieldScrollTargetModifiers(fieldPath)];
+    const mods: any[] = [
+      ...buildFieldScrollTargetModifiers(
+        fieldPath,
+        reportAnchorLayout ? handleAnchorMeasured : undefined
+      ),
+    ];
 
     const focusAnim = resolveAnimationTrigger(config.animations, 'focus', {
       fieldAnimations: field.animations,
@@ -97,6 +117,8 @@ export function FieldWrapper({
     return mods;
   }, [
     fieldPath,
+    reportAnchorLayout,
+    handleAnchorMeasured,
     config.animations,
     field.animations,
     reducedMotion,
@@ -123,8 +145,12 @@ export function FieldWrapper({
         width: '100%',
         ...styles.containerStyle,
       }}
-      testID={field.testID ?? getFieldScrollAnchorId(fieldPath)}
+      testID={field.testID ?? anchorId}
     >
+      {renderPlatformScrollAnchor({
+        anchorId,
+        onRegister: scrollRegistry?.registerAnchor,
+      })}
       {showTopLabel ? (
         <Row spacing={4} alignment="center" style={{ width: '100%' }}>
           <Text textStyle={styles.labelStyle}>{labelText}</Text>

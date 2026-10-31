@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import {
   Button,
@@ -92,11 +92,22 @@ function SingleDateTimeField({
   locale,
   mode,
 }: FieldRendererProps & { mode: 'date' | 'time' | 'datetime' }) {
-  const { config, colorScheme, renderIcon } = useActiveForm();
+  const { store, config, colorScheme, renderIcon } = useActiveForm();
   const [androidDialogOpen, setAndroidDialogOpen] = useState(false);
 
   const strValue = typeof value === 'string' ? value : '';
   const webState = useNativeState<string>(strValue);
+  const externalVersion = store.getExternalVersion(fieldPath);
+  const lastSyncedRef = useRef<number>(externalVersion);
+
+  useEffect(() => {
+    if (lastSyncedRef.current !== externalVersion) {
+      lastSyncedRef.current = externalVersion;
+      if (webState.get() !== strValue) {
+        webState.set(strValue);
+      }
+    }
+  }, [externalVersion, strValue, webState]);
 
   const minDate = useMemo(() => {
     if (field.minDate) return new Date(field.minDate);
@@ -148,7 +159,12 @@ function SingleDateTimeField({
             paddingHorizontal: 4,
           }}
           textStyle={styles.inputTextStyle}
-          onChangeText={(txt) => onChange(txt)}
+          onChangeText={(txt) => {
+            if (webState.get() !== txt) {
+              webState.set(txt);
+            }
+            onChange(txt);
+          }}
           onBlur={onBlur}
         />
       </Row>

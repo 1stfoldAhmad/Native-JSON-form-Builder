@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import {
   Button,
@@ -10,6 +10,7 @@ import {
   Text,
   TextInput,
   useNativeState,
+  type TextInputRef,
 } from '@expo/ui';
 import { SegmentedControl } from '@expo/ui/community/segmented-control';
 
@@ -262,12 +263,36 @@ function AutocompleteField({
   styles,
   locale,
   getFieldValue,
+  registerFocusHandle,
 }: FieldRendererProps) {
-  const { dataSources, config } = useActiveForm();
+  const { store, dataSources, config } = useActiveForm();
+  const inputRef = useRef<TextInputRef>(null);
   const initialStr = value == null ? '' : String(value);
   const nativeText = useNativeState<string>(initialStr);
   const [query, setQuery] = useState(initialStr);
   const [openSuggestions, setOpenSuggestions] = useState(false);
+
+  const externalVersion = store.getExternalVersion(fieldPath);
+  const lastSyncedRef = useRef<number>(externalVersion);
+
+  useEffect(() => {
+    registerFocusHandle({
+      focus: () => inputRef.current?.focus(),
+      blur: () => inputRef.current?.blur(),
+    });
+    return () => registerFocusHandle(null);
+  }, [registerFocusHandle]);
+
+  useEffect(() => {
+    if (lastSyncedRef.current !== externalVersion) {
+      lastSyncedRef.current = externalVersion;
+      const nextStr = value == null ? '' : String(value);
+      if (nativeText.get() !== nextStr) {
+        nativeText.set(nextStr);
+      }
+      setQuery(nextStr);
+    }
+  }, [externalVersion, value, nativeText]);
 
   const { options } = useFieldOptions({
     field,
@@ -284,6 +309,7 @@ function AutocompleteField({
   return (
     <Column spacing={6} style={{ width: '100%' }}>
       <TextInput
+        ref={inputRef}
         value={nativeText}
         placeholder={placeholder}
         placeholderTextColor={styles.placeholderColor}
@@ -299,6 +325,9 @@ function AutocompleteField({
           onBlur();
         }}
         onChangeText={(txt) => {
+          if (nativeText.get() !== txt) {
+            nativeText.set(txt);
+          }
           setQuery(txt);
           setOpenSuggestions(true);
           onChange(txt);
@@ -584,14 +613,38 @@ function ColorPickerField({
   fieldPath,
   value,
   onChange,
+  onFocus,
   onBlur,
   disabled,
   readOnly,
   styles,
+  registerFocusHandle,
 }: FieldRendererProps) {
+  const { store } = useActiveForm();
+  const inputRef = useRef<TextInputRef>(null);
   const currentColor = typeof value === 'string' && value ? value : '#2563EB';
-  const hexState = useNativeState<string>(currentColor);
+  const displayHex = typeof value === 'string' ? value : '#2563EB';
+  const hexState = useNativeState<string>(displayHex);
+  const externalVersion = store.getExternalVersion(fieldPath);
+  const lastSyncedRef = useRef<number>(externalVersion);
   const presets = field.colorPresets ?? DEFAULT_COLOR_PRESETS;
+
+  useEffect(() => {
+    registerFocusHandle({
+      focus: () => inputRef.current?.focus(),
+      blur: () => inputRef.current?.blur(),
+    });
+    return () => registerFocusHandle(null);
+  }, [registerFocusHandle]);
+
+  useEffect(() => {
+    if (lastSyncedRef.current !== externalVersion) {
+      lastSyncedRef.current = externalVersion;
+      if (hexState.get() !== displayHex) {
+        hexState.set(displayHex);
+      }
+    }
+  }, [externalVersion, displayHex, hexState]);
 
   const selectColor = (hex: string) => {
     hexState.set(hex);
@@ -611,7 +664,10 @@ function ColorPickerField({
 
       <Row spacing={8} alignment="center" style={{ width: '100%' }}>
         {presets.map((swatch) => {
-          const isCurrent = currentColor.toLowerCase() === swatch.toLowerCase();
+          const isCurrent =
+            typeof value === 'string' &&
+            value.length > 0 &&
+            value.toLowerCase() === swatch.toLowerCase();
           return (
             <Button
               key={swatch}
@@ -637,6 +693,7 @@ function ColorPickerField({
       </Row>
 
       <TextInput
+        ref={inputRef}
         value={hexState}
         placeholder="#RRGGBB"
         placeholderTextColor={styles.placeholderColor}
@@ -647,7 +704,11 @@ function ColorPickerField({
         style={styles.inputStyle}
         textStyle={styles.inputTextStyle}
         testID={`color-hex-${fieldPath}`}
+        onFocus={onFocus}
         onChangeText={(txt) => {
+          if (hexState.get() !== txt) {
+            hexState.set(txt);
+          }
           onChange(txt);
         }}
         onBlur={onBlur}

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   Button,
   Column,
@@ -11,6 +11,7 @@ import {
 } from '@expo/ui';
 
 import { useActiveForm } from '../core/context';
+import { getPlatformSensitiveInputModifiers } from '../core/nativePlatformBridge';
 import { useNativeTextState } from '../state/useNativeTextState';
 import type { FieldRendererProps } from '../types';
 import {
@@ -280,11 +281,16 @@ function NumericTextInputFieldRenderer({
   };
 
   const hasAddons = Boolean(prefix || suffix || showStepper);
+  const inputModifiers = useMemo(
+    () => getPlatformSensitiveInputModifiers(Boolean(field.sensitive), field.type),
+    [field.sensitive, field.type]
+  );
 
   const inputNode = (
     <TextInput
       ref={inputRef}
       value={nativeState}
+      modifiers={inputModifiers}
       placeholder={placeholder}
       placeholderTextColor={styles.placeholderColor}
       editable={!disabled}

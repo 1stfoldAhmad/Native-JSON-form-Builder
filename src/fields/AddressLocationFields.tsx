@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Button,
   Column,
@@ -189,17 +189,27 @@ function CoordinatesField({
   readOnly,
   styles,
 }: FieldRendererProps) {
+  const { store } = useActiveForm();
   const coords =
     value && typeof value === 'object' && !Array.isArray(value)
       ? (value as { latitude?: number | string; longitude?: number | string })
       : { latitude: '', longitude: '' };
 
-  const latState = useNativeState<string>(
-    coords.latitude === undefined ? '' : String(coords.latitude)
-  );
-  const lngState = useNativeState<string>(
-    coords.longitude === undefined ? '' : String(coords.longitude)
-  );
+  const latStr = coords.latitude === undefined ? '' : String(coords.latitude);
+  const lngStr = coords.longitude === undefined ? '' : String(coords.longitude);
+  const latState = useNativeState<string>(latStr);
+  const lngState = useNativeState<string>(lngStr);
+
+  const externalVersion = store.getExternalVersion(fieldPath);
+  const lastSyncedRef = useRef<number>(externalVersion);
+
+  useEffect(() => {
+    if (lastSyncedRef.current !== externalVersion) {
+      lastSyncedRef.current = externalVersion;
+      if (latState.get() !== latStr) latState.set(latStr);
+      if (lngState.get() !== lngStr) lngState.set(lngStr);
+    }
+  }, [externalVersion, latStr, lngStr, latState, lngState]);
 
   return (
     <Row spacing={10} alignment="center" style={{ width: '100%' }}>
@@ -215,6 +225,7 @@ function CoordinatesField({
           textStyle={styles.inputTextStyle}
           testID={`coords-lat-${fieldPath}`}
           onChangeText={(txt) => {
+            if (latState.get() !== txt) latState.set(txt);
             const parsed = txt.trim() === '' ? '' : Number(txt);
             onChange({
               ...coords,
@@ -236,6 +247,7 @@ function CoordinatesField({
           textStyle={styles.inputTextStyle}
           testID={`coords-lng-${fieldPath}`}
           onChangeText={(txt) => {
+            if (lngState.get() !== txt) lngState.set(txt);
             const parsed = txt.trim() === '' ? '' : Number(txt);
             onChange({
               ...coords,
@@ -262,7 +274,7 @@ function LocationSearchField({
   locale,
   getFieldValue,
 }: FieldRendererProps) {
-  const { dataSources, config, renderIcon } = useActiveForm();
+  const { store, dataSources, config, renderIcon } = useActiveForm();
   const initialLabel =
     typeof value === 'string'
       ? value
@@ -273,6 +285,19 @@ function LocationSearchField({
   const searchState = useNativeState<string>(initialLabel);
   const [query, setQuery] = useState(initialLabel);
   const [open, setOpen] = useState(false);
+
+  const externalVersion = store.getExternalVersion(fieldPath);
+  const lastSyncedRef = useRef<number>(externalVersion);
+
+  useEffect(() => {
+    if (lastSyncedRef.current !== externalVersion) {
+      lastSyncedRef.current = externalVersion;
+      if (searchState.get() !== initialLabel) {
+        searchState.set(initialLabel);
+      }
+      setQuery(initialLabel);
+    }
+  }, [externalVersion, initialLabel, searchState]);
 
   const loader = useFieldOptions({
     field: {
