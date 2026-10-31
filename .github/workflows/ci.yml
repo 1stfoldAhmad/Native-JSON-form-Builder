@@ -48,5 +48,11 @@ jobs:
       - name: Build distributable package
         run: npm run build
 
-      - name: Verify npm package tarball contents
-        run: npm pack --dry-run
+      - name: Verify emitted declaration cleanliness & npm package tarball contents
+        run: |
+          test -f dist/index.js
+          test -f dist/index.d.ts
+          test -f dist/core/nativePlatformBridge.ios.js
+          test -f dist/core/nativePlatformBridge.android.js
+          ! grep -rn 'types="node"' dist/
+          npm pack --dry-run

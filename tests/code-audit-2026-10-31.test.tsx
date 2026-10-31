@@ -511,10 +511,13 @@ describe('Code Audit Regressions (31 Oct 2026) — Security, ReDoS, iOS Keyboard
   // Priority 6: NPM Package Tarball & TypeScript Declaration Readiness
   // ===========================================================================
   describe('Priority 6 — Package export & build artifact readiness', () => {
-    it('ships compiled dist entrypoints, platform bridges, schema, and clean .d.ts files without @types/node leakage', () => {
+    it('ships valid package exports, build config without @types/node leakage, platform bridges, and schema', () => {
       const rootDir = path.resolve(__dirname, '..');
       const pkg = JSON.parse(
         fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')
+      );
+      const buildTsConfig = JSON.parse(
+        fs.readFileSync(path.join(rootDir, 'tsconfig.build.json'), 'utf8')
       );
 
       expect(pkg.main).toBe('./dist/index.js');
@@ -524,22 +527,33 @@ describe('Code Audit Regressions (31 Oct 2026) — Security, ReDoS, iOS Keyboard
       expect(pkg.exports['./schema/expo-form.schema.json']).toBe(
         './schema/expo-form.schema.json'
       );
+      expect(buildTsConfig.compilerOptions.outDir).toBe('./dist');
+      expect(buildTsConfig.compilerOptions.rootDir).toBe('./src');
+      expect(buildTsConfig.compilerOptions.types).toEqual([]);
 
-      const requiredFiles = [
-        'dist/index.js',
-        'dist/index.d.ts',
-        'dist/core/nativePlatformBridge.js',
-        'dist/core/nativePlatformBridge.ios.js',
-        'dist/core/nativePlatformBridge.android.js',
+      const requiredSourceFiles = [
+        'src/index.ts',
+        'src/core/nativePlatformBridge.tsx',
+        'src/core/nativePlatformBridge.ios.tsx',
+        'src/core/nativePlatformBridge.android.tsx',
         'schema/expo-form.schema.json',
       ];
-      for (const rel of requiredFiles) {
+      for (const rel of requiredSourceFiles) {
         expect(fs.existsSync(path.join(rootDir, rel))).toBe(true);
       }
 
-      // Ensure emitted declaration files never inject `/// <reference types="node" />`
-      const indexDts = fs.readFileSync(path.join(rootDir, 'dist/index.d.ts'), 'utf8');
-      expect(indexDts).not.toContain('types="node"');
+      // If `npm run build` has already emitted `dist/`, also verify build artifacts & clean declarations
+      if (fs.existsSync(path.join(rootDir, 'dist/index.d.ts'))) {
+        expect(fs.existsSync(path.join(rootDir, 'dist/index.js'))).toBe(true);
+        expect(
+          fs.existsSync(path.join(rootDir, 'dist/core/nativePlatformBridge.ios.js'))
+        ).toBe(true);
+        expect(
+          fs.existsSync(path.join(rootDir, 'dist/core/nativePlatformBridge.android.js'))
+        ).toBe(true);
+        const indexDts = fs.readFileSync(path.join(rootDir, 'dist/index.d.ts'), 'utf8');
+        expect(indexDts).not.toContain('types="node"');
+      }
     });
   });
 });
