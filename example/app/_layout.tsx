@@ -171,6 +171,16 @@ function DrawerShell() {
           }}
         />
         <Drawer.Screen
+          name="custom-builder"
+          options={{
+            title: 'Custom form.json Studio',
+            drawerLabel: 'Custom form.json Builder',
+            drawerIcon: ({ color, size }) => (
+              <Ionicons name="code-slash-outline" size={size} color={String(color)} />
+            ),
+          }}
+        />
+        <Drawer.Screen
           name="register"
           options={{
             title: 'Register (All 88 Field Types)',

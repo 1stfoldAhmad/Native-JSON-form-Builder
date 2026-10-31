@@ -300,16 +300,16 @@ export interface ComputedFieldFormula {
  */
 export interface FormStepConfig {
   id: string;
-  title: string;
-  description?: string;
+  title: string | Record<string, string>;
+  description?: string | Record<string, string>;
   icon?: string;
   /** Fields rendered in this step. */
   fields: readonly FieldConfig[];
   /** Validate step fields before advancing to next step. Defaults to true. */
   validateBeforeNext?: boolean;
   visibleWhen?: ConditionExpression;
-  nextLabel?: string;
-  previousLabel?: string;
+  nextLabel?: string | Record<string, string>;
+  previousLabel?: string | Record<string, string>;
 }
 
 /**

@@ -1,3 +1,7 @@
+import Ajv2020 from 'ajv/dist/2020';
+import addFormats from 'ajv-formats';
+
+import { ALL_BUILT_IN_FIELD_TYPES } from '../fields/FieldRegistry';
 import type { ConfigSchemaIssue, FieldConfig, FormConfig } from '../types';
 
 const STRUCTURAL_TYPES_WITHOUT_NAME = new Set([
@@ -11,19 +15,111 @@ const STRUCTURAL_TYPES_WITHOUT_NAME = new Set([
   'stepGroup',
 ]);
 
-/**
- * Validates and normalizes an incoming JSON `FormConfig`, reporting clear,
- * developer-friendly configuration issues rather than crashing silently (Section 14 & 17).
- */
-export function parseAndValidateFormConfig(
-  rawConfig: unknown,
-  isRegisteredFieldType?: (type: string) => boolean
-): {
+const CHOICE_TYPES_EXPECTING_OPTIONS_OR_SOURCE = new Set([
+  'checkboxGroup',
+  'radioGroup',
+  'select',
+  'searchableSelect',
+  'multiSelect',
+  'searchableMultiSelect',
+  'segmentedControl',
+  'chips',
+]);
+
+const VALID_COMPUTED_OPERATIONS = new Set([
+  'template',
+  'sum',
+  'subtract',
+  'multiply',
+  'divide',
+  'concat',
+  'ageFromDate',
+  'count',
+  'conditional',
+  'custom',
+]);
+
+const BUILT_IN_TYPE_SET = new Set<string>(ALL_BUILT_IN_FIELD_TYPES);
+
+export interface ParseFormConfigOptions {
+  /** Custom predicate checking if a field `type` is registered (built-in or custom). */
+  isRegisteredFieldType?: (type: string) => boolean;
+  /** Treat unknown/unregistered field types as fatal errors instead of warnings. Defaults to false. */
+  strictFieldTypes?: boolean;
+}
+
+export interface ParsedFormConfigResult {
   config: FormConfig | null;
   issues: ConfigSchemaIssue[];
+  errors: ConfigSchemaIssue[];
+  warnings: ConfigSchemaIssue[];
   hasFatalError: boolean;
-} {
+  valid: boolean;
+}
+
+function detectEmbeddedFunction(value: unknown, path: string, issues: ConfigSchemaIssue[]): void {
+  if (typeof value === 'function') {
+    issues.push({
+      path,
+      message:
+        'Executable JavaScript functions are not allowed inside declarative form.json configs. Register handlers by string ID via <ExpoFormProvider /> or props.',
+      severity: 'error',
+    });
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => detectEmbeddedFunction(item, `${path}[${index}]`, issues));
+    return;
+  }
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    detectEmbeddedFunction(v, `${path}.${k}`, issues);
+  }
+}
+
+/**
+ * Validates and normalizes an incoming JSON `FormConfig` (accepting either a parsed object
+ * or a raw JSON string), reporting clear, developer-friendly standard-compliance diagnostics
+ * rather than crashing silently.
+ */
+export function parseAndValidateFormConfig(
+  rawInput: unknown,
+  isRegisteredFieldTypeOrOptions?:
+    | ((type: string) => boolean)
+    | ParseFormConfigOptions
+): ParsedFormConfigResult {
   const issues: ConfigSchemaIssue[] = [];
+
+  const options: ParseFormConfigOptions =
+    typeof isRegisteredFieldTypeOrOptions === 'function'
+      ? { isRegisteredFieldType: isRegisteredFieldTypeOrOptions }
+      : (isRegisteredFieldTypeOrOptions ?? {});
+
+  const isTypeKnown =
+    options.isRegisteredFieldType ?? ((type: string) => BUILT_IN_TYPE_SET.has(type));
+
+  let rawConfig: unknown = rawInput;
+  if (typeof rawInput === 'string') {
+    const trimmed = rawInput.trim();
+    if (!trimmed) {
+      issues.push({
+        path: 'json',
+        message: 'Form JSON string is empty. Provide a valid JSON object following the ExpoForm standard.',
+        severity: 'error',
+      });
+      return finalizeResult(null, issues);
+    }
+    try {
+      rawConfig = JSON.parse(trimmed);
+    } catch (err) {
+      issues.push({
+        path: 'json',
+        message: `Invalid JSON syntax: ${err instanceof Error ? err.message : 'Unable to parse JSON string'}`,
+        severity: 'error',
+      });
+      return finalizeResult(null, issues);
+    }
+  }
 
   if (!rawConfig || typeof rawConfig !== 'object' || Array.isArray(rawConfig)) {
     issues.push({
@@ -31,8 +127,11 @@ export function parseAndValidateFormConfig(
       message: 'Form configuration must be a non-null JSON object.',
       severity: 'error',
     });
-    return { config: null, issues, hasFatalError: true };
+    return finalizeResult(null, issues);
   }
+
+  // Enforce pure-JSON standard: reject embedded JS functions
+  detectEmbeddedFunction(rawConfig, 'config', issues);
 
   const candidate = rawConfig as Partial<FormConfig>;
 
@@ -56,15 +155,55 @@ export function parseAndValidateFormConfig(
     });
   }
 
+  // Validate embedded JSON Schema 2020-12 if provided
+  if (candidate.schema !== undefined) {
+    if (!candidate.schema || typeof candidate.schema !== 'object' || Array.isArray(candidate.schema)) {
+      issues.push({
+        path: 'config.schema',
+        message: '"schema" must be a valid JSON Schema 2020-12 object.',
+        severity: 'error',
+      });
+    } else {
+      try {
+        const ajv = new Ajv2020({ strict: false, validateSchema: false });
+        addFormats(ajv);
+        ajv.compile(candidate.schema as Record<string, unknown>);
+      } catch (err) {
+        issues.push({
+          path: 'config.schema',
+          message: `Invalid JSON Schema in "config.schema": ${err instanceof Error ? err.message : 'compilation failed'}`,
+          severity: 'error',
+        });
+      }
+    }
+  }
+
   const seenFieldNames = new Set<string>();
+  const topLevelFieldNames = new Set<string>(
+    Array.isArray(candidate.fields)
+      ? candidate.fields
+          .map((f) => (f && typeof f === 'object' ? f.name : undefined))
+          .filter((n): n is string => Boolean(n))
+      : []
+  );
+
+  const validateCondition = (cond: unknown, condPath: string) => {
+    if (!cond || typeof cond !== 'object' || Array.isArray(cond)) {
+      issues.push({
+        path: condPath,
+        message: 'Condition expression must be a JSON object (e.g. { "field": "role", "equals": "admin" }).',
+        severity: 'error',
+      });
+    }
+  };
 
   const validateFieldList = (fields: readonly FieldConfig[], basePath: string, prefix = '') => {
     fields.forEach((field, idx) => {
       const itemPath = `${basePath}[${idx}]`;
-      if (!field || typeof field !== 'object') {
+      if (!field || typeof field !== 'object' || Array.isArray(field)) {
         issues.push({
           path: itemPath,
-          message: 'Field definition must be an object.',
+          message: 'Field definition must be a JSON object.',
           severity: 'error',
         });
         return;
@@ -79,23 +218,23 @@ export function parseAndValidateFormConfig(
         return;
       }
 
-      if (isRegisteredFieldType && !isRegisteredFieldType(field.type)) {
+      if (!isTypeKnown(field.type)) {
         issues.push({
           path: `${itemPath}.type`,
-          message: `Unknown field type "${field.type}" on field "${field.name ?? idx}". Register a custom renderer or use a built-in field type.`,
-          severity: 'warning',
+          message: `Unknown field type "${field.type}" on field "${field.name ?? idx}". Register a custom renderer or use one of the 88 built-in field types.`,
+          severity: options.strictFieldTypes ? 'error' : 'warning',
         });
       }
 
-      if (!STRUCTURAL_TYPES_WITHOUT_NAME.has(field.type) && !field.name) {
+      if (!STRUCTURAL_TYPES_WITHOUT_NAME.has(field.type) && (!field.name || typeof field.name !== 'string' || !field.name.trim())) {
         issues.push({
           path: `${itemPath}.name`,
-          message: `Input field of type "${field.type}" requires a "name" property.`,
+          message: `Input field of type "${field.type}" requires a non-empty string "name".`,
           severity: 'error',
         });
       }
 
-      if (field.name) {
+      if (field.name && typeof field.name === 'string') {
         const fullKey = prefix ? `${prefix}.${field.name}` : field.name;
         if (seenFieldNames.has(fullKey)) {
           issues.push({
@@ -105,6 +244,70 @@ export function parseAndValidateFormConfig(
           });
         }
         seenFieldNames.add(fullKey);
+      }
+
+      // Check choice fields without options or dataSource
+      if (
+        CHOICE_TYPES_EXPECTING_OPTIONS_OR_SOURCE.has(field.type) &&
+        (!Array.isArray(field.options) || field.options.length === 0) &&
+        !field.dataSource
+      ) {
+        issues.push({
+          path: `${itemPath}.options`,
+          message: `Selection field "${field.name ?? idx}" (type "${field.type}") should define either "options" or "dataSource".`,
+          severity: 'warning',
+        });
+      }
+
+      // Check computed formula
+      if (field.type === 'computed') {
+        if (!field.computed || typeof field.computed !== 'object' || !field.computed.operation) {
+          issues.push({
+            path: `${itemPath}.computed`,
+            message: `Computed field "${field.name ?? idx}" requires a "computed" formula object with an "operation".`,
+            severity: 'error',
+          });
+        } else if (!VALID_COMPUTED_OPERATIONS.has(field.computed.operation)) {
+          issues.push({
+            path: `${itemPath}.computed.operation`,
+            message: `Unsupported computed operation "${field.computed.operation}". Supported: ${[...VALID_COMPUTED_OPERATIONS].join(', ')}.`,
+            severity: 'error',
+          });
+        }
+      }
+
+      // Check repeater & objectGroup child fields
+      if (
+        (field.type === 'repeater' || field.type === 'objectGroup') &&
+        (!Array.isArray(field.fields) || field.fields.length === 0)
+      ) {
+        issues.push({
+          path: `${itemPath}.fields`,
+          message: `"${field.type}" field "${field.name ?? idx}" requires a non-empty "fields" array.`,
+          severity: 'error',
+        });
+      }
+
+      // Check stepGroup steps
+      if (field.type === 'stepGroup' && (!Array.isArray(field.steps) || field.steps.length === 0)) {
+        issues.push({
+          path: `${itemPath}.steps`,
+          message: '"stepGroup" field requires a non-empty "steps" array.',
+          severity: 'error',
+        });
+      }
+
+      // Check condition objects
+      for (const condKey of [
+        'visibleWhen',
+        'hiddenWhen',
+        'enabledWhen',
+        'disabledWhen',
+        'requiredWhen',
+      ] as const) {
+        if (field[condKey] !== undefined) {
+          validateCondition(field[condKey], `${itemPath}.${condKey}`);
+        }
       }
 
       // Check regex syntax upfront so malformed regex in JSON is reported clearly
@@ -138,6 +341,13 @@ export function parseAndValidateFormConfig(
 
       if (field.steps && Array.isArray(field.steps)) {
         field.steps.forEach((step, sIdx) => {
+          if (!step.id) {
+            issues.push({
+              path: `${itemPath}.steps[${sIdx}].id`,
+              message: 'Each step inside "stepGroup" must have a string "id".',
+              severity: 'error',
+            });
+          }
           if (Array.isArray(step.fields)) {
             validateFieldList(step.fields, `${itemPath}.steps[${sIdx}].fields`, prefix);
           }
@@ -152,41 +362,126 @@ export function parseAndValidateFormConfig(
 
   if (Array.isArray(candidate.sections)) {
     candidate.sections.forEach((sec, sIdx) => {
-      if (!sec.id) {
+      if (!sec || typeof sec !== 'object') {
+        issues.push({
+          path: `config.sections[${sIdx}]`,
+          message: 'Section definition must be a JSON object.',
+          severity: 'error',
+        });
+        return;
+      }
+      if (!sec.id || typeof sec.id !== 'string') {
         issues.push({
           path: `config.sections[${sIdx}].id`,
-          message: 'Each section must have a string "id".',
+          message: 'Each section must have a non-empty string "id".',
           severity: 'error',
         });
       }
-      if (Array.isArray(sec.fields)) {
-        const inlineObjs = sec.fields.filter(
-          (f: string | FieldConfig): f is FieldConfig => typeof f !== 'string'
-        );
-        validateFieldList(inlineObjs, `config.sections[${sIdx}].fields`);
+      if (!Array.isArray(sec.fields)) {
+        issues.push({
+          path: `config.sections[${sIdx}].fields`,
+          message: `Section "${sec.id ?? sIdx}" must define a "fields" array.`,
+          severity: 'error',
+        });
+      } else {
+        const inlineObjs: FieldConfig[] = [];
+        sec.fields.forEach((entry: string | FieldConfig, fIdx: number) => {
+          if (typeof entry === 'string') {
+            if (!topLevelFieldNames.has(entry)) {
+              issues.push({
+                path: `config.sections[${sIdx}].fields[${fIdx}]`,
+                message: `Section "${sec.id}" references field "${entry}", which does not exist in top-level "config.fields".`,
+                severity: 'warning',
+              });
+            }
+          } else {
+            inlineObjs.push(entry);
+          }
+        });
+        if (inlineObjs.length > 0) {
+          validateFieldList(inlineObjs, `config.sections[${sIdx}].fields`);
+        }
       }
     });
   }
 
   if (Array.isArray(candidate.steps)) {
     candidate.steps.forEach((step, sIdx) => {
-      if (!step.id) {
+      if (!step || typeof step !== 'object') {
+        issues.push({
+          path: `config.steps[${sIdx}]`,
+          message: 'Wizard step definition must be a JSON object.',
+          severity: 'error',
+        });
+        return;
+      }
+      if (!step.id || typeof step.id !== 'string') {
         issues.push({
           path: `config.steps[${sIdx}].id`,
-          message: 'Each wizard step must have a string "id".',
+          message: 'Each wizard step must have a non-empty string "id".',
           severity: 'error',
         });
       }
-      if (Array.isArray(step.fields)) {
+      if (!Array.isArray(step.fields)) {
+        issues.push({
+          path: `config.steps[${sIdx}].fields`,
+          message: `Wizard step "${step.id ?? sIdx}" must define a "fields" array.`,
+          severity: 'error',
+        });
+      } else {
         validateFieldList(step.fields, `config.steps[${sIdx}].fields`);
       }
     });
   }
 
-  const hasFatalError = issues.some((i) => i.severity === 'error');
+  return finalizeResult(candidate as FormConfig, issues);
+}
+
+function finalizeResult(
+  candidate: FormConfig | null,
+  issues: ConfigSchemaIssue[]
+): ParsedFormConfigResult {
+  const errors = issues.filter((i) => i.severity === 'error');
+  const warnings = issues.filter((i) => i.severity === 'warning');
+  const hasFatalError = errors.length > 0 || candidate === null;
   return {
-    config: hasFatalError ? null : (candidate as FormConfig),
+    config: hasFatalError ? null : candidate,
     issues,
+    errors,
+    warnings,
     hasFatalError,
+    valid: !hasFatalError,
+  };
+}
+
+/**
+ * Convenience helper for parsing and validating a custom `form.json` string or object
+ * against the official ExpoForm standard.
+ */
+export function parseFormJson(
+  jsonOrObject: string | unknown,
+  options?: ParseFormConfigOptions
+): ParsedFormConfigResult {
+  return parseAndValidateFormConfig(jsonOrObject, options);
+}
+
+/**
+ * Validates whether a custom `form.json` string or object adheres to the ExpoForm standard.
+ */
+export function validateFormStandard(
+  jsonOrObject: string | unknown,
+  options?: ParseFormConfigOptions
+): {
+  valid: boolean;
+  errors: ConfigSchemaIssue[];
+  warnings: ConfigSchemaIssue[];
+  issues: ConfigSchemaIssue[];
+} {
+  const res = parseAndValidateFormConfig(jsonOrObject, options);
+  return {
+    valid: res.valid,
+    errors: res.errors,
+    warnings: res.warnings,
+    issues: res.issues,
   };
 }

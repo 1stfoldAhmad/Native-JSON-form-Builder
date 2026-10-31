@@ -123,8 +123,8 @@ export interface ConfigSchemaIssue {
 export interface ExpoFormProps<TValues extends FormValues = FormValues> {
   ref?: Ref<ExpoFormRef<TValues>>;
 
-  /** Complete JSON configuration describing the form. */
-  config: FormConfig;
+  /** Complete JSON configuration describing the form (parsed FormConfig object or raw JSON string). */
+  config: FormConfig | string;
 
   /** Automatic Host boundary mode ('auto' | 'inherit' | 'always'). Defaults to 'auto'. */
   hostMode?: HostMode;

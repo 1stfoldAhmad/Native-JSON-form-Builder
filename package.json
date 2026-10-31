@@ -15,12 +15,14 @@
       "expo-source": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./schema/expo-form.schema.json": "./schema/expo-form.schema.json",
     "./forms/*": "./forms/*",
     "./package.json": "./package.json"
   },
   "files": [
     "dist",
     "src",
+    "schema",
     "forms",
     "README.md",
     "LICENSE"
