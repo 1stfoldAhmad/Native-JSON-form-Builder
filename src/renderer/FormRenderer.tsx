@@ -291,7 +291,9 @@ export function FormRenderer({
 
   const isLoading = externalLoading || formMeta.submitStatus === 'loading';
   const isWizardIntermediateStep =
-    formMeta.totalSteps > 0 && formMeta.currentStepIndex < formMeta.totalSteps - 1;
+    Boolean(config.steps?.length) &&
+    formMeta.totalSteps > 0 &&
+    formMeta.currentStepIndex < formMeta.totalSteps - 1;
 
   const submitHidden =
     config.submit?.hidden === true || externalReadOnly || config.readOnly === true || isWizardIntermediateStep;

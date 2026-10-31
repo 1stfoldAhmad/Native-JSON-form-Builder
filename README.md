@@ -117,7 +117,19 @@ src/
 }
 ```
 
-> Ready-to-run complete JSON schemas are included in [`forms/register.json`](./forms/register.json), [`forms/kyc-wizard.json`](./forms/kyc-wizard.json), and [`forms/all-fields-showcase.json`](./forms/all-fields-showcase.json).
+### Ready-to-Run JSON Form Schemas (`forms/`)
+
+| Schema File | Drawer Route | Description |
+| --- | --- | --- |
+| [`forms/register.json`](./forms/register.json) | `/register` | **All 88 built-in field types** across 7 collapsible sections, English/Urdu RTL i18n, async availability checks, password meter, and conditional business onboarding |
+| [`forms/login.json`](./forms/login.json) | `/login` | Multi-mode sign-in (`Password`, `Phone OTP`, `Quick PIN`) + conditional 2FA TOTP |
+| [`forms/forgot-password.json`](./forms/forgot-password.json) | `/forgot-password` | 3-step account recovery wizard (`lookup` -> `verify` -> `new-password`) |
+| [`forms/checkout.json`](./forms/checkout.json) | `/checkout` | E-commerce checkout with live computed subtotal, custom `promoCode` field, and Card / Wallet / COD payment modes |
+| [`forms/kyc-wizard.json`](./forms/kyc-wizard.json) | `/kyc-wizard` | Multi-step merchant KYC verification with PDF upload, sliders, and signature |
+| [`forms/job-application.json`](./forms/job-application.json) | `/job-application` | Candidate application with repeatable work history, searchable tech stack, resume PDF, and signature |
+| [`forms/contact-support.json`](./forms/contact-support.json) | `/contact-support` | Customer support ticket with priority chips, screenshot uploads, and conditional callback scheduling |
+| [`forms/feedback-survey.json`](./forms/feedback-survey.json) | `/feedback-survey` | Product feedback & NPS survey with 5-star rating, slider, color picker, and date range |
+| [`forms/all-fields-showcase.json`](./forms/all-fields-showcase.json) | — | Standalone reference catalog of field configurations |
 
 ---
 
@@ -190,7 +202,7 @@ npm test
 npm run build
 ```
 
-To run the interactive Expo SDK 58 showcase app in [`example/`](./example):
+To run the interactive **Expo Router Drawer** showcase app in [`example/`](./example) (featuring `expo-router/drawer`, responsive permanent/slide-over sidebar navigation, live Light/Dark & English/Urdu RTL toggles, 1-tap demo prefill presets, JSON config inspector, and all 8 form routes):
 
 ```bash
 cd example

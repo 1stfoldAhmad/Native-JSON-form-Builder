@@ -1,0 +1,261 @@
+{
+  "id": "ecommerce-checkout",
+  "version": "1.0.0",
+  "title": {
+    "en": "Express Checkout & Payment",
+    "ur": "آرڈر چیک آؤٹ اور ادائیگی"
+  },
+  "description": "Shipping address, live order total calculation, promo code validation, and conditional payment method fields.",
+  "defaults": {
+    "country": "PK",
+    "shippingMethod": "express",
+    "paymentMethod": "card",
+    "itemQty": 2,
+    "itemUnitPrice": 49.5,
+    "sameAsShipping": true,
+    "giftWrap": false
+  },
+  "sections": [
+    {
+      "id": "customer-shipping",
+      "title": "1. Contact & Delivery Address",
+      "variant": "card",
+      "collapsible": true,
+      "defaultExpanded": true,
+      "fields": [
+        {
+          "name": "customerName",
+          "type": "fullName",
+          "label": "Recipient Full Name",
+          "placeholder": "Ahmad Khan",
+          "required": true
+        },
+        {
+          "name": "customerEmail",
+          "type": "email",
+          "row": "checkoutContactRow",
+          "label": "Order Receipt Email",
+          "placeholder": "ahmad@1stfold.com",
+          "required": true
+        },
+        {
+          "name": "customerPhone",
+          "type": "phone",
+          "row": "checkoutContactRow",
+          "label": "Delivery Mobile",
+          "countryField": "country",
+          "required": true
+        },
+        {
+          "name": "country",
+          "type": "country",
+          "label": "Destination Country",
+          "required": true
+        },
+        {
+          "name": "state",
+          "type": "state",
+          "row": "shipStateCity",
+          "label": "Province / State",
+          "countryField": "country"
+        },
+        {
+          "name": "city",
+          "type": "city",
+          "row": "shipStateCity",
+          "label": "City",
+          "required": true
+        },
+        {
+          "name": "addressLine1",
+          "type": "addressLine1",
+          "label": "Street Address",
+          "placeholder": "House 14, Street 8, Sector F-7",
+          "required": true
+        },
+        {
+          "name": "addressLine2",
+          "type": "addressLine2",
+          "row": "shipLine2Zip",
+          "label": "Apartment / Landmark",
+          "placeholder": "Near Park"
+        },
+        {
+          "name": "postalCode",
+          "type": "postalCode",
+          "row": "shipLine2Zip",
+          "label": "Postal Code",
+          "countryField": "country",
+          "required": true
+        },
+        {
+          "name": "shippingMethod",
+          "type": "radioGroup",
+          "label": "Delivery Speed",
+          "required": true,
+          "options": [
+            { "label": "Standard Shipping (Free)", "value": "standard", "description": "3–5 business days" },
+            { "label": "Express Air Courier ($9.99)", "value": "express", "description": "Next business day" },
+            { "label": "Same-Day Priority ($19.99)", "value": "sameday", "description": "Delivered within 4 hours" }
+          ]
+        },
+        {
+          "name": "giftWrap",
+          "type": "switch",
+          "label": "Add complimentary gift wrap & note"
+        },
+        {
+          "name": "giftNote",
+          "type": "textarea",
+          "label": "Gift Message",
+          "placeholder": "Write a personal note for the recipient...",
+          "visibleWhen": {
+            "field": "giftWrap",
+            "equals": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "order-summary-payment",
+      "title": "2. Order Summary & Payment",
+      "variant": "card",
+      "collapsible": true,
+      "defaultExpanded": true,
+      "fields": [
+        {
+          "name": "itemQty",
+          "type": "quantity",
+          "row": "orderCalcRow",
+          "label": "Quantity",
+          "min": 1,
+          "max": 25,
+          "required": true
+        },
+        {
+          "name": "itemUnitPrice",
+          "type": "price",
+          "row": "orderCalcRow",
+          "label": "Unit Price (USD)",
+          "currency": "USD",
+          "precision": 2,
+          "required": true
+        },
+        {
+          "name": "orderSubtotal",
+          "type": "computed",
+          "label": "Merchandise Subtotal",
+          "currency": "USD",
+          "precision": 2,
+          "computed": {
+            "operation": "multiply",
+            "fields": ["itemQty", "itemUnitPrice"],
+            "precision": 2
+          }
+        },
+        {
+          "name": "promoCode",
+          "type": "promoCode",
+          "label": "Discount / Promo Code"
+        },
+        {
+          "name": "paymentMethod",
+          "type": "segmentedControl",
+          "label": "Payment Method",
+          "required": true,
+          "options": [
+            { "label": "Card", "value": "card" },
+            { "label": "Mobile Wallet", "value": "wallet" },
+            { "label": "Cash on Delivery", "value": "cod" }
+          ]
+        },
+        {
+          "id": "cardPaymentFields",
+          "type": "conditionalGroup",
+          "visibleWhen": {
+            "field": "paymentMethod",
+            "equals": "card"
+          },
+          "fields": [
+            {
+              "name": "cardholderName",
+              "type": "fullName",
+              "label": "Name on Card",
+              "placeholder": "AHMAD KHAN",
+              "requiredWhen": {
+                "field": "paymentMethod",
+                "equals": "card"
+              }
+            },
+            {
+              "name": "cardNumber",
+              "type": "masked",
+              "label": "Card Number",
+              "placeholder": "4242 4242 4242 4242",
+              "mask": "#### #### #### ####",
+              "sensitive": true,
+              "requiredWhen": {
+                "field": "paymentMethod",
+                "equals": "card"
+              }
+            },
+            {
+              "name": "cardExpiry",
+              "type": "masked",
+              "row": "cardExpCvv",
+              "label": "Expiry (MM/YY)",
+              "placeholder": "08/29",
+              "mask": "##/##",
+              "requiredWhen": {
+                "field": "paymentMethod",
+                "equals": "card"
+              }
+            },
+            {
+              "name": "cardCvv",
+              "type": "pin",
+              "row": "cardExpCvv",
+              "label": "Security Code (CVV)",
+              "placeholder": "•••",
+              "maxLength": 4,
+              "requiredWhen": {
+                "field": "paymentMethod",
+                "equals": "card"
+              }
+            }
+          ]
+        },
+        {
+          "name": "walletPhone",
+          "type": "phone",
+          "label": "JazzCash / EasyPaisa / Apple Pay Number",
+          "defaultCountry": "PK",
+          "visibleWhen": {
+            "field": "paymentMethod",
+            "equals": "wallet"
+          },
+          "requiredWhen": {
+            "field": "paymentMethod",
+            "equals": "wallet"
+          }
+        },
+        {
+          "name": "sameAsShipping",
+          "type": "checkbox",
+          "label": "Billing address is the same as delivery address"
+        }
+      ]
+    }
+  ],
+  "submit": {
+    "label": "Place Order Now",
+    "loadingLabel": "Authorizing Order...",
+    "successLabel": "Order Confirmed!",
+    "showReset": true
+  },
+  "security": {
+    "protectSensitiveFields": true,
+    "clearSensitiveOnReset": true,
+    "sensitiveFields": ["cardNumber", "cardCvv"]
+  }
+}

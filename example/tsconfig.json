@@ -8,11 +8,10 @@
     }
   },
   "include": [
-    "App.tsx",
-    "index.ts",
+    "app/**/*",
     "components/**/*",
+    "forms/**/*",
     "screens/**/*",
-    "forms/**/*.json",
     "../forms/**/*.json"
   ]
 }

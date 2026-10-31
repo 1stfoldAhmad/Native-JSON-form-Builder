@@ -1,0 +1,212 @@
+{
+  "id": "job-application",
+  "version": "1.0.0",
+  "title": {
+    "en": "Job Application",
+    "ur": "ملازمت کی درخواست"
+  },
+  "description": "Apply for open engineering and product roles with resume upload, repeatable work history, skill tags, and compensation expectations.",
+  "defaults": {
+    "country": "PK",
+    "roleApplied": "senior-rn",
+    "workArrangement": ["remote", "hybrid"],
+    "yearsExperience": 5,
+    "expectedSalaryUsd": 95000,
+    "skills": ["typescript", "expo", "rn"],
+    "requiresSponsorship": "no",
+    "experienceItems": [
+      {
+        "company": "1stFold",
+        "title": "Senior React Native Engineer"
+      }
+    ]
+  },
+  "sections": [
+    {
+      "id": "candidate-info",
+      "title": "1. Candidate Information",
+      "variant": "card",
+      "collapsible": true,
+      "defaultExpanded": true,
+      "fields": [
+        {
+          "name": "firstName",
+          "type": "firstName",
+          "row": "candNameRow",
+          "label": "First Name",
+          "required": true
+        },
+        {
+          "name": "lastName",
+          "type": "lastName",
+          "row": "candNameRow",
+          "label": "Last Name",
+          "required": true
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "row": "candContactRow",
+          "label": "Email",
+          "required": true
+        },
+        {
+          "name": "phone",
+          "type": "phone",
+          "row": "candContactRow",
+          "label": "Mobile Number",
+          "defaultCountry": "PK",
+          "required": true
+        },
+        {
+          "name": "linkedinUrl",
+          "type": "url",
+          "row": "candLinksRow",
+          "label": "LinkedIn URL",
+          "placeholder": "https://linkedin.com/in/username"
+        },
+        {
+          "name": "portfolioWebsite",
+          "type": "website",
+          "row": "candLinksRow",
+          "label": "GitHub / Portfolio",
+          "placeholder": "https://github.com/username"
+        }
+      ]
+    },
+    {
+      "id": "role-experience",
+      "title": "2. Position, Stack & Work History",
+      "variant": "card",
+      "collapsible": true,
+      "defaultExpanded": true,
+      "fields": [
+        {
+          "name": "roleApplied",
+          "type": "select",
+          "label": "Open Position",
+          "required": true,
+          "options": [
+            { "label": "Senior React Native / Expo Engineer", "value": "senior-rn" },
+            { "label": "Staff iOS (SwiftUI) Engineer", "value": "staff-ios" },
+            { "label": "Staff Android (Jetpack Compose) Engineer", "value": "staff-android" },
+            { "label": "Product Designer — Design Systems", "value": "product-designer" }
+          ]
+        },
+        {
+          "name": "workArrangement",
+          "type": "chips",
+          "label": "Preferred Work Mode",
+          "maxSelections": 2,
+          "options": [
+            { "label": "Remote", "value": "remote" },
+            { "label": "Hybrid", "value": "hybrid" },
+            { "label": "On-site", "value": "onsite" }
+          ]
+        },
+        {
+          "name": "skills",
+          "type": "searchableMultiSelect",
+          "label": "Core Technical Skills",
+          "searchPlaceholder": "Search skills...",
+          "required": true,
+          "options": [
+            { "label": "TypeScript", "value": "typescript" },
+            { "label": "Expo SDK / Expo UI", "value": "expo" },
+            { "label": "React Native", "value": "rn" },
+            { "label": "SwiftUI", "value": "swiftui" },
+            { "label": "Jetpack Compose", "value": "compose" },
+            { "label": "Node.js / GraphQL", "value": "node" }
+          ]
+        },
+        {
+          "name": "yearsExperience",
+          "type": "slider",
+          "label": "Years of Relevant Experience",
+          "min": 0,
+          "max": 25,
+          "step": 1,
+          "suffix": " yrs"
+        },
+        {
+          "name": "expectedSalaryUsd",
+          "type": "currency",
+          "row": "compDateRow",
+          "label": "Target Annual Base (USD)",
+          "currency": "USD"
+        },
+        {
+          "name": "earliestStartDate",
+          "type": "date",
+          "row": "compDateRow",
+          "label": "Earliest Start Date",
+          "placeholder": "YYYY-MM-DD",
+          "required": true
+        },
+        {
+          "name": "experienceItems",
+          "type": "repeater",
+          "label": "Previous Positions",
+          "itemLabelTemplate": "Position #{{index}}",
+          "addButtonLabel": "Add Position",
+          "minItems": 1,
+          "maxItems": 6,
+          "fields": [
+            {
+              "name": "company",
+              "type": "organization",
+              "row": "jobHistRow",
+              "label": "Company",
+              "required": true
+            },
+            {
+              "name": "title",
+              "type": "jobTitle",
+              "row": "jobHistRow",
+              "label": "Role Title",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "resumePdf",
+          "type": "pdf",
+          "label": "Resume / CV (PDF)",
+          "upload": {
+            "allowedMimeTypes": ["application/pdf"],
+            "maxFileSize": 10485760,
+            "buttonLabel": "Upload Resume PDF"
+          }
+        },
+        {
+          "name": "coverLetter",
+          "type": "textarea",
+          "label": "Why do you want to join our team?",
+          "placeholder": "Share a project you're proud of...",
+          "numberOfLines": 4
+        },
+        {
+          "name": "requiresSponsorship",
+          "type": "radioGroup",
+          "label": "Will you require visa sponsorship?",
+          "options": [
+            { "label": "No", "value": "no" },
+            { "label": "Yes", "value": "yes" }
+          ]
+        },
+        {
+          "name": "applicantSignature",
+          "type": "signature",
+          "label": "Applicant Electronic Signature",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "submit": {
+    "label": "Submit Application",
+    "loadingLabel": "Submitting Application...",
+    "successLabel": "Application Received!",
+    "showReset": true
+  }
+}
