@@ -510,6 +510,8 @@ export interface FieldConfig {
   addButtonLabel?: string;
   removeButtonLabel?: string;
   itemLabelTemplate?: string;
+  /** Allow reordering repeater items up and down. Defaults to true when multiple items exist. */
+  reorderable?: boolean;
   computed?: ComputedFieldFormula;
   /** Restricted formula expression (e.g. `"baseFee + (baseFee * taxRate / 100)"` or `"SUM(items.*.amount)"`). Never uses `eval`. */
   formula?: string;

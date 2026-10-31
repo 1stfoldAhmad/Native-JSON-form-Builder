@@ -646,6 +646,19 @@ export class FormStore {
     this.isAdvancingStep = false;
   }
 
+  public async saveDraft(): Promise<void> {
+    if (!this.storageAdapter) return;
+    const draftCfg = this.config.draft ?? this.config.persistence;
+    const key = draftCfg?.storageKey ?? draftCfg?.key ?? `expo-form-draft:${this.config.id}`;
+    const omissionSet =
+      draftCfg?.excludeSensitive === false &&
+      this.config.security?.protectSensitiveFields === false
+        ? this.builtInSecretPaths
+        : this.sensitivePaths;
+    const toPersist = omitSensitiveValues(this.values, omissionSet);
+    await Promise.resolve(this.storageAdapter.setItem(key, JSON.stringify(toPersist)));
+  }
+
   public async clearDraft(): Promise<void> {
     this.draftSaveDebouncer?.cancel();
     if (!this.storageAdapter) return;
@@ -1457,7 +1470,15 @@ export class FormStore {
       this.config.steps ??
       this.config.fields?.find((f) => f.type === 'stepGroup')?.steps ??
       [];
-    return rawSteps.filter((s) => !s.visibleWhen || evaluateCondition(s.visibleWhen, this.values));
+    const condCtx = this.buildConditionContext();
+    return rawSteps.filter(
+      (s) => !s.visibleWhen || evaluateCondition(s.visibleWhen, this.values, condCtx)
+    );
+  }
+
+  private isStepSkipped(step: { skipWhen?: import('../types').ConditionExpression }): boolean {
+    if (!step.skipWhen) return false;
+    return evaluateCondition(step.skipWhen, this.values, this.buildConditionContext());
   }
 
   public getCurrentStepIndex(): number {
@@ -1529,10 +1550,18 @@ export class FormStore {
       }
 
       const freshSteps = this.getVisibleSteps();
-      if (this.currentStepIndex >= freshSteps.length - 1) return false;
-      this.currentStepIndex += 1;
+      let candidateIdx = this.currentStepIndex + 1;
+      while (
+        candidateIdx < freshSteps.length &&
+        this.isStepSkipped(freshSteps[candidateIdx])
+      ) {
+        candidateIdx += 1;
+      }
+      if (candidateIdx >= freshSteps.length) return false;
+      this.currentStepIndex = candidateIdx;
       const next = freshSteps[this.currentStepIndex];
       this.bumpAndNotifyAll();
+      this.draftSaveDebouncer?.();
       this.callbacks.onStepChange?.(this.currentStepIndex, next.id);
       return true;
     } finally {
@@ -1544,10 +1573,16 @@ export class FormStore {
 
   public previousStep(): void {
     if (this.currentStepIndex <= 0) return;
-    this.currentStepIndex -= 1;
     const steps = this.getVisibleSteps();
+    let candidateIdx = this.currentStepIndex - 1;
+    while (candidateIdx >= 0 && this.isStepSkipped(steps[candidateIdx])) {
+      candidateIdx -= 1;
+    }
+    if (candidateIdx < 0) return;
+    this.currentStepIndex = candidateIdx;
     const prev = steps[this.currentStepIndex];
     this.bumpAndNotifyAll();
+    this.draftSaveDebouncer?.();
     if (prev) {
       this.callbacks.onStepChange?.(this.currentStepIndex, prev.id);
     }

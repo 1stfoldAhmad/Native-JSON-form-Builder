@@ -181,6 +181,61 @@ export {
   type SafeRegexTestResult,
 } from './utils/regexSafety';
 
+// Enterprise Persistence, Offline Queue, Workflows, Versioning & Remote Schemas (Level 2)
+export {
+  DefaultConnectivityAdapter,
+  DRAFT_ENVELOPE_VERSION,
+  DraftManager,
+  OfflineSubmissionQueue,
+  RemoteDraftSyncController,
+  type ConnectivityAdapter,
+  type ConnectivityListener,
+  type DraftEnvelope,
+  type DraftManagerOptions,
+  type DraftVersionConflictContext,
+  type LoadedDraftResult,
+  type OfflineSubmissionQueueOptions,
+  type QueuedAttachmentEntry,
+  type QueuedSubmissionRecord,
+  type QueuedSubmissionStatus,
+  type SubmissionTransportOutcome,
+  type DraftConflictStrategy,
+  type RemoteDraftSnapshot,
+  type RemoteDraftTransport,
+} from './persistence';
+export {
+  evaluatePermissionRule,
+  extractServerPermissionManifest,
+  SubmissionLifecycleMachine,
+  canTransitionSubmissionState,
+  ApprovalWorkflowEngine,
+  StepWorkflowController,
+  type ActorIdentity,
+  type EvaluatedPermissionState,
+  type ServerPermissionManifestEntry,
+  type SubmissionLifecycleSnapshot,
+  type SubmissionTransitionAuditEntry,
+  type ApprovalAuditRecord,
+  type ApprovalDecisionAction,
+  type ApprovalStageRuntimeState,
+  type StepRuntimeSummary,
+  type WizardProgressSummary,
+} from './workflows';
+export {
+  SchemaVersionRegistry,
+  parseSemverTuple,
+  compareSemver,
+  isEngineVersionCompatible,
+  type SchemaMigrationFn,
+} from './versioning/SchemaVersionRegistry';
+export {
+  LIBRARY_ENGINE_VERSION,
+  RemoteSchemaManager,
+  type RemoteSchemaFetchResult,
+  type RemoteSchemaFetcher,
+  type ResolvedRemoteSchema,
+} from './remote/RemoteSchemaManager';
+
 // Complete TypeScript Configuration Contract & Types
 export { defineFormConfig } from './types/config';
 export type * from './types';

@@ -262,6 +262,7 @@ export function ExpoForm<TValues extends FormValues = FormValues>({
       nextStep: () => store.nextStep(),
       previousStep: () => store.previousStep(),
       goToStep: (idx) => store.goToStep(idx),
+      saveDraft: () => store.saveDraft(),
       clearDraft: () => store.clearDraft(),
     }),
     [store]
