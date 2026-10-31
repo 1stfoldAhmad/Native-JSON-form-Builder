@@ -112,6 +112,19 @@ export interface ExpoFormRef<TValues extends FormValues = FormValues> {
   saveDraft?: () => Promise<void>;
   /** Clear any persisted draft in storage. */
   clearDraft: () => Promise<void>;
+  /** Explicitly reconcile current runtime state against a replacement same-ID schema. */
+  reconcileSchema?: (
+    nextConfig: FormConfig,
+    options?: { renamedFields?: Record<string, string> }
+  ) => SchemaReconciliationReport;
+}
+
+export interface SchemaReconciliationReport {
+  addedFields: string[];
+  removedFields: string[];
+  renamedFields: Array<{ from: string; to: string }>;
+  modifiedFields: string[];
+  preservedFields: string[];
 }
 
 export interface ConfigSchemaIssue {
@@ -132,8 +145,33 @@ export interface ExpoFormProps<TValues extends FormValues = FormValues> {
   /** Automatic Host boundary mode ('auto' | 'inherit' | 'always'). Defaults to 'auto'. */
   hostMode?: HostMode;
 
-  /** Initial/prefilled values (merged over `config.defaults` and field `defaultValue`). */
+  /** Initial/prefilled values (merged over `config.defaults` and field `defaultValue` on mount, `config.id` change, `resetKey` change, or when `enableReinitialize` is true). */
   initialValues?: Partial<TValues>;
+
+  /**
+   * Explicit external reset token. Changing `resetKey` resets the form and applies
+   * the latest `initialValues` without resetting on ordinary parent re-renders.
+   */
+  resetKey?: string | number;
+
+  /**
+   * When `true`, deep changes to `initialValues` (`!deepEqual(prev, next)`) reinitialize
+   * the form automatically. Defaults to `false` so unsaved user edits are never wiped
+   * by incidental parent re-renders.
+   */
+  enableReinitialize?: boolean;
+
+  /**
+   * When `enableReinitialize` triggers, preserve fields that the user has already dirtied
+   * (`dirty === true`) while updating untouched fields from the new `initialValues`.
+   */
+  keepDirtyOnReinitialize?: boolean;
+
+  /**
+   * Optional `oldFieldPath -> newFieldPath` mapping applied when replacing a schema
+   * with the same `config.id` so values, errors, and dirty/touched state migrate cleanly.
+   */
+  renamedFields?: Record<string, string>;
 
   /** Disable all editable controls across the form. */
   disabled?: boolean;

@@ -1,6 +1,12 @@
 import { Platform } from 'react-native';
 
-import type { FieldType, FileUploadConfig, FormFileAsset } from '../types';
+import type {
+  FieldConfig,
+  FieldType,
+  FileUploadConfig,
+  FormConfig,
+  FormFileAsset,
+} from '../types';
 import { formatFileSize } from '../utils/formatting';
 
 export interface ResolvedUploadConstraints {
@@ -391,4 +397,125 @@ export async function pickFromDocumentSystem(
     source: 'files',
     status: 'selected',
   }));
+}
+
+export type ServerUploadVerificationCheck =
+  | 'authenticatedSession'
+  | 'magicByteSniffing'
+  | 'contentLengthLimit'
+  | 'serverGeneratedStorageKey'
+  | 'malwareScan';
+
+export interface ServerUploadFieldPolicy {
+  fieldPath: string;
+  fieldType: FieldType;
+  allowedMimeTypes: string[];
+  allowedExtensions: string[];
+  maxFileSize?: number;
+  minFileSize?: number;
+  maxFiles: number;
+  multiple: boolean;
+  requiredServerChecks: readonly ServerUploadVerificationCheck[];
+}
+
+const UPLOAD_FIELD_TYPES = new Set<FieldType>([
+  'file',
+  'multipleFiles',
+  'image',
+  'multipleImages',
+  'avatar',
+  'camera',
+  'video',
+  'audio',
+  'documentScan',
+]);
+
+/**
+ * Extracts a deterministic server-side upload verification policy manifest
+ * from a `FormConfig`.
+ *
+ * Security boundary note:
+ * Client-side MIME, extension, and size checks in `validateSelectedFiles()`
+ * are UX pre-flights only — `mimeType`, `name`, and `size` reported by mobile/web
+ * pickers can be spoofed by a modified client. Upload ingestion endpoints MUST
+ * independently enforce:
+ * 1. Authenticated/authorized upload session (`authenticatedSession`)
+ * 2. Magic-byte / file-signature inspection (`magicByteSniffing`)
+ * 3. Hard stream byte-length enforcement (`contentLengthLimit`)
+ * 4. Server-generated UUID storage keys with sanitized `Content-Disposition` (`serverGeneratedStorageKey`)
+ * 5. Asynchronous malware/AV scanning (`malwareScan`)
+ */
+export function buildServerUploadPolicyManifest(
+  config: FormConfig
+): ServerUploadFieldPolicy[] {
+  const policies: ServerUploadFieldPolicy[] = [];
+  const requiredServerChecks: readonly ServerUploadVerificationCheck[] = [
+    'authenticatedSession',
+    'magicByteSniffing',
+    'contentLengthLimit',
+    'serverGeneratedStorageKey',
+    'malwareScan',
+  ];
+
+  const visitFields = (fields: readonly FieldConfig[], prefix = '') => {
+    for (const field of fields) {
+      const path = field.name
+        ? prefix
+          ? `${prefix}.${field.name}`
+          : field.name
+        : prefix;
+
+      if (field.name && UPLOAD_FIELD_TYPES.has(field.type)) {
+        const resolved = resolveUploadConstraints(field.type, field.upload);
+        policies.push({
+          fieldPath: path,
+          fieldType: field.type,
+          allowedMimeTypes: [...resolved.allowedMimeTypes],
+          allowedExtensions: [...resolved.allowedExtensions],
+          maxFileSize: resolved.maxFileSize,
+          minFileSize: resolved.minFileSize,
+          maxFiles: resolved.maxFiles,
+          multiple: resolved.multiple,
+          requiredServerChecks,
+        });
+      }
+
+      if (field.fields) {
+        const nextPrefix =
+          field.type === 'repeater' && field.name
+            ? `${path}[]`
+            : field.type === 'objectGroup' && field.name
+              ? path
+              : prefix;
+        visitFields(field.fields, nextPrefix);
+      }
+
+      if (field.steps) {
+        for (const step of field.steps) {
+          visitFields(step.fields, prefix);
+        }
+      }
+    }
+  };
+
+  if (config.fields) {
+    visitFields(config.fields);
+  }
+  if (config.sections) {
+    for (const sec of config.sections) {
+      const inlineFields = sec.fields.filter(
+        (entry): entry is FieldConfig => typeof entry !== 'string'
+      );
+      if (inlineFields.length > 0) {
+        visitFields(inlineFields);
+      }
+    }
+  }
+  if (config.steps) {
+    for (const step of config.steps) {
+      visitFields(step.fields);
+    }
+  }
+
+  return policies;
 }

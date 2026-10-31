@@ -30,6 +30,10 @@ export function ExpoForm<TValues extends FormValues = FormValues>({
   config: rawConfig,
   hostMode = 'auto',
   initialValues,
+  resetKey,
+  enableReinitialize,
+  keepDirtyOnReinitialize,
+  renamedFields,
   disabled,
   readOnly,
   loading,
@@ -184,6 +188,11 @@ export function ExpoForm<TValues extends FormValues = FormValues>({
     storeRef.current = new FormStore({
       config: effectiveConfig,
       initialValues: initialValues as FormValues | undefined,
+      resetKey,
+      enableReinitialize,
+      keepDirtyOnReinitialize,
+      renamedFields,
+      loading,
       callbacks: callbacksObj,
       asyncValidators: mergedAsyncValidators,
       actions: mergedActions,
@@ -203,10 +212,18 @@ export function ExpoForm<TValues extends FormValues = FormValues>({
   useEffect(() => {
     store.syncProps({
       config: effectiveConfig,
+      initialValues: initialValues as FormValues | undefined,
+      resetKey,
+      enableReinitialize,
+      keepDirtyOnReinitialize,
+      renamedFields,
+      loading,
       callbacks: callbacksObj,
       asyncValidators: mergedAsyncValidators,
       actions: mergedActions,
       calculators: globalCfg.calculators,
+      functionRegistry: globalCfg.pluginRegistry?.formulaFunctions,
+      conditionRegistry: globalCfg.pluginRegistry?.conditions,
       storageAdapter: localStorageAdapter ?? globalCfg.storageAdapter,
       locale: activeLocale,
       disabled,
@@ -216,10 +233,17 @@ export function ExpoForm<TValues extends FormValues = FormValues>({
   }, [
     store,
     effectiveConfig,
+    initialValues,
+    resetKey,
+    enableReinitialize,
+    keepDirtyOnReinitialize,
+    renamedFields,
+    loading,
     callbacksObj,
     mergedAsyncValidators,
     mergedActions,
     globalCfg.calculators,
+    globalCfg.pluginRegistry,
     localStorageAdapter,
     globalCfg.storageAdapter,
     activeLocale,
@@ -228,7 +252,6 @@ export function ExpoForm<TValues extends FormValues = FormValues>({
     scrollToField,
   ]);
 
-  // Apply external server errors whenever `serverErrors` prop changes
   // Cancel debounced timers and in-flight async validations on unmount
   useEffect(() => {
     return () => {
@@ -236,12 +259,17 @@ export function ExpoForm<TValues extends FormValues = FormValues>({
     };
   }, [store]);
 
-  // Apply external server errors whenever `serverErrors` prop changes
+  // Apply external server errors and/or form-level errors whenever props change
   useEffect(() => {
-    if (serverErrors && Object.keys(serverErrors).length > 0) {
-      store.setServerErrors(serverErrors);
+    const hasFieldErrs = Boolean(serverErrors && Object.keys(serverErrors).length > 0);
+    const hasFormErrs = Boolean(formErrors && formErrors.length > 0);
+    if (hasFieldErrs || hasFormErrs) {
+      store.setServerErrors(
+        serverErrors ?? {},
+        formErrors ? [...formErrors] : undefined
+      );
     }
-  }, [store, serverErrors]);
+  }, [store, serverErrors, formErrors]);
 
   // Expose full imperative ref handle (Section 9)
   useImperativeHandle(
@@ -266,6 +294,7 @@ export function ExpoForm<TValues extends FormValues = FormValues>({
       goToStep: (idx) => store.goToStep(idx),
       saveDraft: () => store.saveDraft(),
       clearDraft: () => store.clearDraft(),
+      reconcileSchema: (nextCfg, opts) => store.reconcileSchema(nextCfg, opts),
     }),
     [store]
   );

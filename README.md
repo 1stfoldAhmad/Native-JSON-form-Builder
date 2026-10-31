@@ -828,12 +828,26 @@ npx expo start
 
 ## 14. Enterprise Engine, Workflows, Native Capabilities & Tooling (Levels 1–4)
 
-In addition to rendering all 88 built-in `@expo/ui` field types, `native-json-form-builder` provides a modular enterprise architecture (see [`docs/UPGRADE_GUIDE.md`](./docs/UPGRADE_GUIDE.md) for complete documentation):
+In addition to rendering all 88 built-in `@expo/ui` field types, `native-json-form-builder` provides a modular enterprise architecture (see [`docs/UPGRADE_GUIDE.md`](./docs/UPGRADE_GUIDE.md) and [`docs/SECURITY_AND_COMPATIBILITY.md`](./docs/SECURITY_AND_COMPATIBILITY.md) for complete documentation):
 
-- **Level 1 — Intelligent Form Engine**: 10-stage `SchemaCompiler` with FNV-1a fingerprinting & LRU cache, cycle-safe `DependencyGraph`, zero-`eval` `FormulaEngine` (`'calculated'` fields, 27 functions, `$item.*` / `items.*.*` repeater aggregations), named reusable `ConditionRegistry` (`readOnlyWhen`, field-to-field comparisons), `DataSourceManager` (`static`, `provider`, `rest` with `AbortController` + TTL cache), and `AsyncValidationManager`.
-- **Level 2 — Enterprise Workflows**: `DraftManager` (versioned TTL + conflict recovery + secret exclusion), `OfflineSubmissionQueue` (idempotency keys + exponential backoff), `StepWorkflowController` (`skipWhen`), 9-state `SubmissionLifecycleMachine`, `ApprovalWorkflowEngine`, RBAC `PermissionsPolicy` + `extractServerPermissionManifest`, `SchemaVersionRegistry`, and `RemoteSchemaManager`.
+- **Level 1 — Intelligent Form Engine**: 10-stage `SchemaCompiler` with FNV-1a fingerprinting & LRU cache, cycle-safe `DependencyGraph`, `O(depth + affectedListeners)` `PathSubscriptionIndex`, zero-`eval` `FormulaEngine` (`'calculated'` fields, 27 functions, `$item.*` / `items.*.*` repeater aggregations), named reusable `ConditionRegistry` (`readOnlyWhen`, field-to-field comparisons), `DataSourceManager` (`static`, `provider`, `rest` with `AbortController` + TTL cache), and `AsyncValidationManager`.
+- **Level 2 — Enterprise Workflows**: `DraftManager` (versioned TTL + conflict recovery + secret exclusion), `OfflineSubmissionQueue` (idempotency keys + exponential backoff), `StepWorkflowController` (`skipWhen`), 9-state `SubmissionLifecycleMachine`, `ApprovalWorkflowEngine`, RBAC `PermissionsPolicy` + `extractServerPermissionManifest`, `buildServerUploadPolicyManifest`, `SchemaVersionRegistry`, and `RemoteSchemaManager`.
 - **Level 3 — Advanced Native Experience**: `PlatformCapabilityRegistry` (`barcode` / `qrCode`, `documentScan`, drawn `signature`, GPS `coordinates` adapters with universal `@expo/ui` fallbacks), 3-tier phone/tablet/desktop grid (`desktopColumns`), and Eastern Arabic / Urdu / European comma-decimal `parseNumericInput`.
 - **Level 4 — Developer Platform**: Isolated `PluginRegistry`, `createFieldPackage`, `MiddlewarePipeline`, `ThemeRegistry` (`default`, `compact`, `high-contrast`, `finance-enterprise`), `generateFormValuesTypeScript`, `diffFormSchemas`, secret-redacting `inspectFormRuntime`, and opt-in `PerformanceProfiler`.
+- **Lifecycle, Live Schema Reconciliation & Race Integrity**: Deterministic `initialValues` sync (`resetKey`, `enableReinitialize`, `keepDirtyOnReinitialize`), same-ID `reconcileSchema` (`renamedFields`, added/removed/modified field migration & pruning), and fail-closed async validation snapshot verification on `submit()`, `validate()`, and `nextStep()`.
+
+### Tested Compatibility Matrix
+
+| Package / Runtime | Tested Version | Peer / Engine Range |
+| --- | --- | --- |
+| `expo` | `55.0.6` | `>=55.0.0` |
+| `@expo/ui` | `58.0.25` | `>=55.0.0` |
+| `react` | `19.2.0` | `>=19.0.0` |
+| `react-native` | `0.83.2` | `>=0.81.0` |
+| `react-native-web` | `0.21.0` | `~0.21.0` |
+| `ajv` / `ajv-formats` | `8.18.0` / `3.0.1` | `^8.18.0` / `^3.0.1` |
+| `typescript` | `5.9.2` | `>=5.5.0` |
+| Node.js (Tooling / CI) | `20.x` / `22.x` | `>=20.0.0` |
 
 ---
 

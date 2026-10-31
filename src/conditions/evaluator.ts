@@ -115,8 +115,9 @@ function compareDateOrdered(actual: unknown, threshold: unknown): number | null 
 }
 
 export function isStructuredClause(expr: ConditionExpression): expr is ConditionClause {
+  if (typeof expr !== 'object' || expr === null) return false;
   const keys = Object.keys(expr);
-  return keys.some((k) => RESERVED_CLAUSE_KEYS.has(k));
+  return keys.some((k) => RESERVED_CLAUSE_KEYS.has(k) || k === '$condition');
 }
 
 function evaluateLeafOperator(
@@ -237,6 +238,23 @@ export function evaluateCondition(
 
   const registry = context?.registry ?? defaultConditionRegistry;
 
+  if (typeof expression === 'string') {
+    if (!expression.startsWith('$condition:')) return false;
+    const refName = expression.slice('$condition:'.length).trim();
+    if (!refName) return false;
+    const visited = context?.visitedRefs ?? new Set<string>();
+    if (visited.has(refName)) return false;
+    const targetExpr =
+      context?.namedConditions?.[refName] ?? registry.getCondition(refName);
+    if (!targetExpr) return false;
+    const nextVisited = new Set(visited);
+    nextVisited.add(refName);
+    return evaluateCondition(targetExpr, values, {
+      ...context,
+      visitedRefs: nextVisited,
+    });
+  }
+
   if (!isStructuredClause(expression)) {
     // Shorthand `{ accountType: 'business', country: 'PK' }` -> implicit AND of field equalities
     for (const [fieldPath, expected] of Object.entries(expression)) {
@@ -252,9 +270,10 @@ export function evaluateCondition(
 
   const clause = expression;
 
-  // 1. Named reusable condition reference (`{ ref: 'isCommercialVehicle' }`)
-  if (clause.ref) {
-    const refName = clause.ref.trim();
+  // 1. Named reusable condition reference (`{ ref: 'isCommercialVehicle' }` or `{ $condition: '...' }`)
+  const namedRef = clause.ref ?? clause.$condition;
+  if (namedRef) {
+    const refName = namedRef.trim();
     const visited = context?.visitedRefs ?? new Set<string>();
     if (visited.has(refName)) {
       // Break circular condition references safely
@@ -552,6 +571,27 @@ export function extractConditionFieldPaths(
     acc.add(normalizeExtractedPath(p, options?.repeaterTemplatePrefix));
   };
 
+  if (typeof expression === 'string') {
+    if (expression.startsWith('$condition:')) {
+      const refName = expression.slice('$condition:'.length).trim();
+      const visited = options?.visitedRefs ?? new Set<string>();
+      if (refName && !visited.has(refName)) {
+        const nextVisited = new Set(visited);
+        nextVisited.add(refName);
+        const registry = options?.registry ?? defaultConditionRegistry;
+        const target =
+          options?.namedConditions?.[refName] ?? registry.getCondition(refName);
+        if (target) {
+          extractConditionFieldPaths(target, acc, {
+            ...options,
+            visitedRefs: nextVisited,
+          });
+        }
+      }
+    }
+    return acc;
+  }
+
   if (!isStructuredClause(expression)) {
     for (const key of Object.keys(expression)) {
       addPath(key);
@@ -559,8 +599,9 @@ export function extractConditionFieldPaths(
     return acc;
   }
 
-  if (expression.ref) {
-    const refName = expression.ref.trim();
+  const namedRef = expression.ref ?? expression.$condition;
+  if (namedRef) {
+    const refName = namedRef.trim();
     const visited = options?.visitedRefs ?? new Set<string>();
     if (!visited.has(refName)) {
       const nextVisited = new Set(visited);
