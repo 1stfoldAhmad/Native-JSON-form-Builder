@@ -1,11 +1,53 @@
+export type StandardConditionOperator =
+  | 'equals'
+  | 'notEquals'
+  | 'greaterThan'
+  | 'greaterThanOrEqual'
+  | 'lessThan'
+  | 'lessThanOrEqual'
+  | 'contains'
+  | 'notContains'
+  | 'startsWith'
+  | 'endsWith'
+  | 'in'
+  | 'notIn'
+  | 'isEmpty'
+  | 'isNotEmpty'
+  | 'matches'
+  | 'dateBefore'
+  | 'dateAfter'
+  | 'between'
+  | 'equalsField'
+  | 'notEqualsField'
+  | (string & {});
+
+export type ConditionGroupOperator = 'AND' | 'OR' | 'NOT' | 'and' | 'or' | 'not';
+
 /**
  * Declarative condition expression used in `visibleWhen`, `hiddenWhen`,
- * `enabledWhen`, `requiredWhen`, and conditional validation rules.
+ * `enabledWhen`, `disabledWhen`, `readOnlyWhen`, `requiredWhen`, and conditional validation rules.
+ * Supports:
+ * 1. Canonical operator groups: `{ operator: 'AND', conditions: [...] }`
+ * 2. Canonical leaf clauses: `{ field: 'vehicleType', operator: 'equals', value: 'commercial' }`
+ * 3. Reusable named condition references: `{ ref: 'isCommercialVehicle' }`
+ * 4. Shorthand clauses (`equals`, `and`, `or`, `not`) and maps (`{ accountType: 'business' }`).
  * Never embeds executable JavaScript functions in JSON.
  */
 export interface ConditionClause {
+  /** Group combinator ('AND' | 'OR' | 'NOT') or leaf comparison operator ('equals', 'greaterThan', etc.). */
+  operator?: ConditionGroupOperator | StandardConditionOperator;
+  /** Child condition array when `operator` is 'AND', 'OR', or 'NOT'. */
+  conditions?: readonly ConditionExpression[];
+  /** Reference to a reusable named condition registered in `config.conditions` or `ConditionRegistry`. */
+  ref?: string;
+
   /** Target field path (supports dot notation for nested objects, e.g. 'account.type'). */
   field?: string;
+  /** Operand value when using `{ field, operator, value }` syntax. */
+  value?: unknown;
+  /** Sibling field path operand when comparing field-to-field (`{ field, operator, valueField }`). */
+  valueField?: string;
+
   /** Exact equality against value. */
   equals?: unknown;
   /** Exact inequality against value. */
@@ -14,6 +56,10 @@ export interface ConditionClause {
   contains?: unknown;
   /** Negated substring or array element membership check. */
   notContains?: unknown;
+  /** String prefix check. */
+  startsWith?: string;
+  /** String suffix check. */
+  endsWith?: string;
   /** Value belongs to the given list. */
   in?: readonly unknown[];
   /** Value does not belong to the given list. */
@@ -26,6 +72,12 @@ export interface ConditionClause {
   lessThan?: number | string;
   /** Numeric or ISO-date less than or equal comparison. */
   lessThanOrEqual?: number | string;
+  /** Inclusive [min, max] range check for numbers or ISO dates. */
+  between?: readonly [number | string, number | string];
+  /** ISO date strictly before threshold. */
+  dateBefore?: string;
+  /** ISO date strictly after threshold. */
+  dateAfter?: string;
   /** Regex pattern match on stringified value. */
   matches?: string | { pattern: string; flags?: string };
   /** True when the target field is empty (null, undefined, '', or []). */
@@ -139,6 +191,13 @@ export interface CrossFieldRuleConfig {
   message?: string;
 }
 
+export interface AsyncValidationRetryConfig {
+  /** Maximum attempts including initial attempt (e.g. 2 = 1 retry). Defaults to 1. */
+  maxAttempts?: number;
+  /** Base delay in ms between retry attempts. Defaults to 250. */
+  backoffMs?: number;
+}
+
 /**
  * Asynchronous server/provider validation reference.
  * References a validator registered in ExpoFormProvider or ExpoForm props — never raw JS in JSON.
@@ -150,16 +209,34 @@ export interface AsyncFieldValidationConfig {
   debounceMs?: number;
   /** Trigger timing: 'onBlur' | 'onChange' | 'onSubmit'. Defaults to 'onBlur'. */
   trigger?: 'onBlur' | 'onChange' | 'onSubmit' | (string & {});
+  /** Sibling field paths whose values invalidate cached results and re-trigger validation. */
+  dependsOn?: readonly string[];
+  /** Cache TTL in milliseconds for `(validatorId, field, value, dependsOn)` results. Defaults to 0 (disabled) unless specified. */
+  cacheTtlMs?: number;
+  /** Optional retry policy for transient network failures. */
+  retry?: AsyncValidationRetryConfig;
+  /** Optional condition gating whether this async rule executes. */
+  when?: ConditionExpression;
   /** Additional static parameters passed to the registered validator. */
   params?: Record<string, unknown>;
   /** Custom fallback error message when validator rejects or returns false. */
   message?: string;
 }
 
+export interface CustomValidationRuleRef {
+  /** Registered synchronous validator ID. */
+  validatorId: string;
+  params?: Record<string, unknown>;
+  message?: string;
+  when?: ConditionExpression;
+}
+
 /**
  * Per-field Layer-2 validation configuration complementing JSON Schema.
  */
 export interface FieldValidationConfig {
+  /** Optional condition gating whether non-required validation rules on this field execute. */
+  when?: ConditionExpression;
   required?: boolean | string;
   requiredWhen?: ConditionExpression;
   minLength?: number;
@@ -199,8 +276,10 @@ export interface FieldValidationConfig {
   cnic?: boolean | { allowUnformatted?: boolean; pattern?: string; message?: string };
   /** Explicit cross-field rules. */
   crossField?: readonly CrossFieldRuleConfig[];
-  /** Asynchronous server validator configuration. */
-  async?: AsyncFieldValidationConfig;
+  /** Registered custom synchronous validation rules. */
+  custom?: CustomValidationRuleRef | readonly CustomValidationRuleRef[];
+  /** Asynchronous server validator configuration (single rule or array of rules). */
+  async?: AsyncFieldValidationConfig | readonly AsyncFieldValidationConfig[];
   /** Custom per-rule error messages keyed by JSON Schema keyword or rule name (e.g. required, pattern, format, minLength, minimum, equalsField, minAge). */
   messages?: Record<string, string>;
 }

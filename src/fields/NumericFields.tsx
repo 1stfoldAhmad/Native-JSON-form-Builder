@@ -224,7 +224,12 @@ function NumericTextInputFieldRenderer({
   const { nativeState, handleChangeText } = useNativeTextState({
     store,
     fieldPath,
-    parseToStoreValue: (str) => parseNumericInput(str, { integerOnly, precision }),
+    parseToStoreValue: (str) =>
+      parseNumericInput(str, {
+        integerOnly,
+        precision,
+        locale: field.format?.locale ?? locale,
+      }),
     formatFromStoreValue: (val) =>
       val === undefined || val === null || val === '' ? '' : String(val),
   });

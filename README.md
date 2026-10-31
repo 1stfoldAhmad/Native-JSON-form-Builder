@@ -21,6 +21,7 @@ Author a declarative `form.json` file following the official **ExpoForm Standard
 11. [Plugin & Extension Architecture](#11-plugin--extension-architecture)
 12. [Security & Privacy Guarantees](#12-security--privacy-guarantees)
 13. [Included Example App & Ready-Made Schemas](#13-included-example-app--ready-made-schemas)
+14. [Enterprise Engine, Workflows, Native Capabilities & Tooling (Levels 1–4)](#14-enterprise-engine-workflows-native-capabilities--tooling-levels-14)
 
 ---
 
@@ -801,6 +802,7 @@ export function AppFormRoot({ children }: { children: React.ReactNode }) {
 | [`forms/job-application.json`](./forms/job-application.json) | `/job-application` | Candidate application with `repeater` work history, `searchableMultiSelect` skills, PDF resume, and signature |
 | [`forms/contact-support.json`](./forms/contact-support.json) | `/contact-support` | Support ticket with priority chips, multi-image screenshots, and conditional phone callback scheduling |
 | [`forms/feedback-survey.json`](./forms/feedback-survey.json) | `/feedback-survey` | Product feedback & NPS survey with 5-star rating, slider, color picker, and date range |
+| [`forms/vehicle-registration-enterprise.json`](./forms/vehicle-registration-enterprise.json) | `/enterprise-vehicle` | **Enterprise Showcase (Levels 1–4)**: `FormulaEngine` (`SUM`, `ROUND`, `IF`), `skipWhen` step workflow, reorderable repeater, `qrCode` / `documentScan` / `coordinates` / `signature`, and `finance-enterprise` theme |
 | [`forms/all-fields-showcase.json`](./forms/all-fields-showcase.json) | — | Standalone reference catalog of field configurations |
 
 ### Running Verification & the Interactive Expo Router Drawer App
@@ -821,6 +823,17 @@ cd example
 npm install
 npx expo start
 ```
+
+---
+
+## 14. Enterprise Engine, Workflows, Native Capabilities & Tooling (Levels 1–4)
+
+In addition to rendering all 88 built-in `@expo/ui` field types, `native-json-form-builder` provides a modular enterprise architecture (see [`docs/UPGRADE_GUIDE.md`](./docs/UPGRADE_GUIDE.md) for complete documentation):
+
+- **Level 1 — Intelligent Form Engine**: 10-stage `SchemaCompiler` with FNV-1a fingerprinting & LRU cache, cycle-safe `DependencyGraph`, zero-`eval` `FormulaEngine` (`'calculated'` fields, 27 functions, `$item.*` / `items.*.*` repeater aggregations), named reusable `ConditionRegistry` (`readOnlyWhen`, field-to-field comparisons), `DataSourceManager` (`static`, `provider`, `rest` with `AbortController` + TTL cache), and `AsyncValidationManager`.
+- **Level 2 — Enterprise Workflows**: `DraftManager` (versioned TTL + conflict recovery + secret exclusion), `OfflineSubmissionQueue` (idempotency keys + exponential backoff), `StepWorkflowController` (`skipWhen`), 9-state `SubmissionLifecycleMachine`, `ApprovalWorkflowEngine`, RBAC `PermissionsPolicy` + `extractServerPermissionManifest`, `SchemaVersionRegistry`, and `RemoteSchemaManager`.
+- **Level 3 — Advanced Native Experience**: `PlatformCapabilityRegistry` (`barcode` / `qrCode`, `documentScan`, drawn `signature`, GPS `coordinates` adapters with universal `@expo/ui` fallbacks), 3-tier phone/tablet/desktop grid (`desktopColumns`), and Eastern Arabic / Urdu / European comma-decimal `parseNumericInput`.
+- **Level 4 — Developer Platform**: Isolated `PluginRegistry`, `createFieldPackage`, `MiddlewarePipeline`, `ThemeRegistry` (`default`, `compact`, `high-contrast`, `finance-enterprise`), `generateFormValuesTypeScript`, `diffFormSchemas`, secret-redacting `inspectFormRuntime`, and opt-in `PerformanceProfiler`.
 
 ---
 

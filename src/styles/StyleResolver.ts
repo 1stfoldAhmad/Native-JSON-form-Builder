@@ -10,6 +10,7 @@ import type {
   TypographyTokens,
 } from '../types';
 import { DEFAULT_DARK_THEME, DEFAULT_LIGHT_THEME } from './defaultThemes';
+import { defaultThemeRegistry, type ThemeRegistry } from './ThemeRegistry';
 
 export interface FieldVisualStateFlags {
   focused?: boolean;
@@ -23,14 +24,26 @@ export interface FieldVisualStateFlags {
 
 export function resolvePalette(
   themeConfig: FormThemeConfig | undefined,
-  activeScheme: 'light' | 'dark'
+  activeScheme: 'light' | 'dark',
+  registry: ThemeRegistry = defaultThemeRegistry
 ) {
   const base = activeScheme === 'dark' ? DEFAULT_DARK_THEME : DEFAULT_LIGHT_THEME;
+  const preset = themeConfig?.preset ? registry.get(themeConfig.preset) : undefined;
+  const presetTokens = preset
+    ? activeScheme === 'dark'
+      ? preset.dark
+      : preset.light
+    : undefined;
   const custom = activeScheme === 'dark' ? themeConfig?.dark : themeConfig?.light;
   return {
     ...base,
+    ...presetTokens,
     ...custom,
-    seedColor: custom?.seedColor ?? themeConfig?.seedColor ?? base.seedColor,
+    seedColor:
+      custom?.seedColor ??
+      themeConfig?.seedColor ??
+      presetTokens?.seedColor ??
+      base.seedColor,
   };
 }
 

@@ -182,6 +182,10 @@ export interface FormThemeTokens {
 }
 
 export interface FormThemeConfig {
+  /** Named registered theme preset (e.g., `'default'`, `'compact'`, `'high-contrast'`, `'finance-enterprise'`). */
+  preset?: string;
+  /** Density scale affecting vertical spacing and input heights. */
+  density?: 'compact' | 'comfortable' | 'spacious';
   /** Appearance mode: 'system' follows device theme; 'light' or 'dark' forces scheme. */
   mode?: 'light' | 'dark' | 'system' | (string & {});
   /** Primary seed color passed to `@expo/ui` Host for Material 3 / SwiftUI tint derivation. */

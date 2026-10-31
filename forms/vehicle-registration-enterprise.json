@@ -1,0 +1,236 @@
+{
+  "$schema": "../schema/expo-form.schema.json",
+  "id": "vehicle-registration-enterprise",
+  "version": "2.0.0",
+  "title": {
+    "en": "Enterprise Vehicle Registration & Excise Assessment",
+    "ur": "گاڑی کی رجسٹریشن اور ایکسائز تشخیص"
+  },
+  "description": {
+    "en": "Multi-stage vehicle inspection, customs verification, and automated tax calculation.",
+    "ur": "گاڑی کا معائنہ، کسٹمز کی تصدیق اور خودکار ٹیکس حساب۔"
+  },
+  "theme": {
+    "preset": "finance-enterprise",
+    "density": "comfortable",
+    "mode": "system"
+  },
+  "layout": {
+    "columns": 1,
+    "tabletColumns": 2,
+    "tabletBreakpoint": 768,
+    "desktopColumns": 3,
+    "desktopBreakpoint": 1200,
+    "rowGap": 14,
+    "columnGap": 14
+  },
+  "draft": {
+    "enabled": true,
+    "debounceMs": 500,
+    "ttlMs": 604800000,
+    "conflictResolution": "newestWins",
+    "excludeSensitive": true,
+    "clearOnSubmit": true
+  },
+  "security": {
+    "protectSensitiveFields": true,
+    "clearSensitiveOnReset": true,
+    "sensitiveFields": ["ownerTaxPin"]
+  },
+  "capabilities": {
+    "optional": ["barcodeScanner", "documentScanner", "signature", "location"]
+  },
+  "conditions": {
+    "isImportedVehicle": {
+      "field": "originType",
+      "equals": "imported"
+    },
+    "isCommercialFleet": {
+      "field": "usageCategory",
+      "equals": "commercial"
+    }
+  },
+  "defaults": {
+    "originType": "local",
+    "usageCategory": "private",
+    "engineCc": 1500,
+    "invoicePrice": 4500000,
+    "accessories": [
+      { "title": "Tracker Unit", "qty": 1, "unitPrice": 35000 }
+    ]
+  },
+  "steps": [
+    {
+      "id": "vehicle-identity",
+      "title": {
+        "en": "1. Vehicle & Chassis Scan",
+        "ur": "1. گاڑی اور چیسس اسکین"
+      },
+      "validateBeforeNext": true,
+      "fields": [
+        {
+          "name": "chassisCode",
+          "type": "qrCode",
+          "label": "Chassis / VIN QR Code",
+          "required": true,
+          "scan": {
+            "formats": ["qr", "code128"],
+            "extractPattern": "^(?:VIN:)?([A-HJ-NPR-Z0-9-]{6,25})$",
+            "preventDuplicates": true,
+            "scanButtonLabel": "Scan VIN"
+          }
+        },
+        {
+          "name": "originType",
+          "type": "segmentedControl",
+          "label": "Assembly / Origin",
+          "required": true,
+          "options": [
+            { "label": "Local Assembly", "value": "local" },
+            { "label": "Imported (CBUs)", "value": "imported" }
+          ]
+        },
+        {
+          "name": "usageCategory",
+          "type": "select",
+          "label": "Usage Category",
+          "required": true,
+          "options": [
+            { "label": "Private Passenger", "value": "private" },
+            { "label": "Commercial Fleet", "value": "commercial" }
+          ]
+        },
+        {
+          "name": "engineCc",
+          "type": "integer",
+          "label": "Engine Displacement (cc)",
+          "required": true,
+          "min": 600,
+          "max": 8000
+        },
+        {
+          "name": "ownerTaxPin",
+          "type": "pin",
+          "label": "Excise Verification PIN",
+          "required": true,
+          "minLength": 4,
+          "maxLength": 6
+        }
+      ]
+    },
+    {
+      "id": "customs-clearance",
+      "title": {
+        "en": "2. Customs & Import Clearance",
+        "ur": "2. کسٹمز کلیئرنس"
+      },
+      "skipWhen": {
+        "not": "$condition:isImportedVehicle"
+      },
+      "validateBeforeNext": true,
+      "fields": [
+        {
+          "name": "gdNumber",
+          "type": "text",
+          "label": "Goods Declaration (GD) Number",
+          "requiredWhen": "$condition:isImportedVehicle"
+        },
+        {
+          "name": "auctionSheetScan",
+          "type": "documentScan",
+          "label": "Customs GD / Auction Sheet Scan"
+        }
+      ]
+    },
+    {
+      "id": "valuation-and-signoff",
+      "title": {
+        "en": "3. Tax Valuation & Sign-off",
+        "ur": "3. ٹیکس تشخیص اور دستخط"
+      },
+      "validateBeforeNext": true,
+      "fields": [
+        {
+          "name": "invoicePrice",
+          "type": "currency",
+          "currency": "PKR",
+          "label": "Base Ex-Factory / Landed Value (PKR)",
+          "required": true,
+          "min": 100000
+        },
+        {
+          "name": "accessories",
+          "type": "repeater",
+          "label": "Factory-Fitted Taxable Accessories",
+          "reorderable": true,
+          "minItems": 0,
+          "maxItems": 10,
+          "fields": [
+            {
+              "name": "title",
+              "type": "text",
+              "label": "Accessory",
+              "required": true
+            },
+            {
+              "name": "qty",
+              "type": "quantity",
+              "label": "Qty",
+              "min": 1,
+              "defaultValue": 1
+            },
+            {
+              "name": "unitPrice",
+              "type": "currency",
+              "currency": "PKR",
+              "label": "Unit Price",
+              "min": 0,
+              "defaultValue": 0
+            },
+            {
+              "name": "total",
+              "type": "calculated",
+              "label": "Line Total",
+              "formula": "ROUND(COALESCE($item.qty, 0) * COALESCE($item.unitPrice, 0), 2)"
+            }
+          ]
+        },
+        {
+          "name": "accessoriesTotal",
+          "type": "calculated",
+          "label": "Accessories Subtotal (PKR)",
+          "formula": "ROUND(SUM(accessories.*.total), 2)"
+        },
+        {
+          "name": "exciseRegistrationFee",
+          "type": "calculated",
+          "label": "Calculated Registration Tax (PKR)",
+          "formula": "ROUND((invoicePrice + accessoriesTotal) * IF(engineCc > 2000, 0.04, IF(engineCc > 1300, 0.02, 0.01)), 2)"
+        },
+        {
+          "name": "totalPayable",
+          "type": "calculated",
+          "label": "Total Payable Amount (PKR)",
+          "formula": "ROUND(invoicePrice + accessoriesTotal + exciseRegistrationFee, 2)"
+        },
+        {
+          "name": "inspectionBayCoords",
+          "type": "coordinates",
+          "label": "Inspection Bay GPS"
+        },
+        {
+          "name": "inspectorSignature",
+          "type": "signature",
+          "label": "Authorized Inspector Signature",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "submit": {
+    "label": {
+      "en": "Submit Registration Assessment",
+      "ur": "رجسٹریشن جمع کروائیں"
+    }
+  }
+}

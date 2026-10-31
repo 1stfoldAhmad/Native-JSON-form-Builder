@@ -231,6 +231,16 @@ function DrawerShell() {
           }}
         />
         <Drawer.Screen
+          name="enterprise-vehicle"
+          options={{
+            title: 'Enterprise Vehicle Assessment',
+            drawerLabel: 'Enterprise Vehicle (v2)',
+            drawerIcon: ({ color, size }) => (
+              <Ionicons name="car-sport-outline" size={size} color={String(color)} />
+            ),
+          }}
+        />
+        <Drawer.Screen
           name="job-application"
           options={{
             title: 'Job Application',

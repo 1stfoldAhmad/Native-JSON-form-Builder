@@ -9,6 +9,7 @@ import {
   useNativeState,
 } from '@expo/ui';
 
+import { defaultCapabilityRegistry } from '../capabilities/PlatformCapabilityRegistry';
 import { useActiveForm } from '../core/context';
 import { FormIcon } from '../icons/IconRenderer';
 import { useFieldOptions } from '../pickers/optionsLoader';
@@ -211,53 +212,93 @@ function CoordinatesField({
     }
   }, [externalVersion, latStr, lngStr, latState, lngState]);
 
+  const locationAdapter = defaultCapabilityRegistry.getLocationAdapter();
+  const [locating, setLocating] = useState(false);
+
+  const handleCaptureGps = async () => {
+    if (!locationAdapter || disabled || readOnly || locating) return;
+    setLocating(true);
+    try {
+      const pos = await locationAdapter.getCurrentPosition({ enableHighAccuracy: true });
+      if (pos) {
+        latState.set(String(pos.latitude));
+        lngState.set(String(pos.longitude));
+        onChange({
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+        });
+      }
+    } catch (err) {
+      store.setError(
+        fieldPath,
+        err instanceof Error ? err.message : 'Unable to determine current location'
+      );
+    } finally {
+      setLocating(false);
+    }
+  };
+
   return (
-    <Row spacing={10} alignment="center" style={{ width: '100%' }}>
-      <Column spacing={4} style={{ width: '48%' }}>
-        <Text textStyle={styles.descriptionStyle}>Latitude</Text>
-        <TextInput
-          value={latState}
-          placeholder="33.6844"
-          placeholderTextColor={styles.placeholderColor}
-          editable={!disabled && !readOnly}
-          keyboardType="decimal-pad"
-          style={styles.inputStyle}
-          textStyle={styles.inputTextStyle}
-          testID={`coords-lat-${fieldPath}`}
-          onChangeText={(txt) => {
-            if (latState.get() !== txt) latState.set(txt);
-            const parsed = txt.trim() === '' ? '' : Number(txt);
-            onChange({
-              ...coords,
-              latitude: Number.isNaN(parsed as number) ? txt : parsed,
-            });
-          }}
-          onBlur={onBlur}
-        />
-      </Column>
-      <Column spacing={4} style={{ width: '48%' }}>
-        <Text textStyle={styles.descriptionStyle}>Longitude</Text>
-        <TextInput
-          value={lngState}
-          placeholder="73.0479"
-          placeholderTextColor={styles.placeholderColor}
-          editable={!disabled && !readOnly}
-          keyboardType="decimal-pad"
-          style={styles.inputStyle}
-          textStyle={styles.inputTextStyle}
-          testID={`coords-lng-${fieldPath}`}
-          onChangeText={(txt) => {
-            if (lngState.get() !== txt) lngState.set(txt);
-            const parsed = txt.trim() === '' ? '' : Number(txt);
-            onChange({
-              ...coords,
-              longitude: Number.isNaN(parsed as number) ? txt : parsed,
-            });
-          }}
-          onBlur={onBlur}
-        />
-      </Column>
-    </Row>
+    <Column spacing={8} style={{ width: '100%' }}>
+      <Row spacing={10} alignment="center" style={{ width: '100%' }}>
+        <Column spacing={4} style={{ width: '48%' }}>
+          <Text textStyle={styles.descriptionStyle}>Latitude</Text>
+          <TextInput
+            value={latState}
+            placeholder="33.6844"
+            placeholderTextColor={styles.placeholderColor}
+            editable={!disabled && !readOnly}
+            keyboardType="decimal-pad"
+            style={styles.inputStyle}
+            textStyle={styles.inputTextStyle}
+            testID={`coords-lat-${fieldPath}`}
+            onChangeText={(txt) => {
+              if (latState.get() !== txt) latState.set(txt);
+              const parsed = txt.trim() === '' ? '' : Number(txt);
+              onChange({
+                ...coords,
+                latitude: Number.isNaN(parsed as number) ? txt : parsed,
+              });
+            }}
+            onBlur={onBlur}
+          />
+        </Column>
+        <Column spacing={4} style={{ width: '48%' }}>
+          <Text textStyle={styles.descriptionStyle}>Longitude</Text>
+          <TextInput
+            value={lngState}
+            placeholder="73.0479"
+            placeholderTextColor={styles.placeholderColor}
+            editable={!disabled && !readOnly}
+            keyboardType="decimal-pad"
+            style={styles.inputStyle}
+            textStyle={styles.inputTextStyle}
+            testID={`coords-lng-${fieldPath}`}
+            onChangeText={(txt) => {
+              if (lngState.get() !== txt) lngState.set(txt);
+              const parsed = txt.trim() === '' ? '' : Number(txt);
+              onChange({
+                ...coords,
+                longitude: Number.isNaN(parsed as number) ? txt : parsed,
+              });
+            }}
+            onBlur={onBlur}
+          />
+        </Column>
+      </Row>
+      {locationAdapter && !readOnly ? (
+        <Button
+          variant="outlined"
+          disabled={disabled || locating}
+          testID={`coords-gps-${fieldPath}`}
+          onPress={() => void handleCaptureGps()}
+          style={{ height: 42, borderRadius: 10 }}>
+          <Text textStyle={{ ...styles.inputTextStyle, fontWeight: '600' }}>
+            {locating ? 'Locating...' : 'Use Current Location'}
+          </Text>
+        </Button>
+      ) : null}
+    </Column>
   );
 }
 

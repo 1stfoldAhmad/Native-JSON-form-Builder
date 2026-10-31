@@ -20,6 +20,7 @@ import {
   MAX_REGEX_INPUT_LENGTH,
   safeRegexTest,
 } from '../utils/regexSafety';
+import { AsyncValidationManager } from './AsyncValidationManager';
 import { evaluatePasswordStrength } from './passwordStrength';
 import {
   isValidCNIC,
@@ -52,15 +53,32 @@ export function collectActiveFields(
     if (f.name) fieldByName.set(f.name, f);
   }
 
+  const namedConditions = config.conditions;
+
+  const extractRowScope = (path: string) => {
+    const segs = path.split('.');
+    for (let i = segs.length - 2; i >= 0; i -= 1) {
+      if (/^\d+$/.test(segs[i])) {
+        return {
+          rowPrefix: segs.slice(0, i + 1).join('.'),
+          rowIndex: Number(segs[i]),
+        };
+      }
+    }
+    return {};
+  };
+
   const walk = (fields: readonly FieldConfig[], prefix: string, parentVisible: boolean) => {
     for (const field of fields) {
-      const ownVisible = parentVisible && isFieldVisible(field, values);
       const currentPath = field.name ? (prefix ? `${prefix}.${field.name}` : field.name) : prefix;
+      const condCtx = { namedConditions, ...extractRowScope(currentPath) };
+      const ownVisible = parentVisible && isFieldVisible(field, values, condCtx);
 
       if (field.type === 'stepGroup' && field.steps?.length) {
         for (const step of field.steps) {
           const stepVisible =
-            ownVisible && (!step.visibleWhen || evaluateCondition(step.visibleWhen, values));
+            ownVisible &&
+            (!step.visibleWhen || evaluateCondition(step.visibleWhen, values, condCtx));
           walk(step.fields, prefix, stepVisible);
         }
         continue;
@@ -101,15 +119,19 @@ export function collectActiveFields(
 
   if (config.steps?.length) {
     for (const step of config.steps) {
-      const stepVisible = !step.visibleWhen || evaluateCondition(step.visibleWhen, values);
+      const stepVisible =
+        !step.visibleWhen ||
+        evaluateCondition(step.visibleWhen, values, { namedConditions });
       walk(step.fields, '', stepVisible);
     }
   } else if (config.sections?.length) {
     const referencedNames = new Set<string>();
     for (const section of config.sections) {
       const sectionVisible =
-        (!section.visibleWhen || evaluateCondition(section.visibleWhen, values)) &&
-        (!section.hiddenWhen || !evaluateCondition(section.hiddenWhen, values));
+        (!section.visibleWhen ||
+          evaluateCondition(section.visibleWhen, values, { namedConditions })) &&
+        (!section.hiddenWhen ||
+          !evaluateCondition(section.hiddenWhen, values, { namedConditions }));
 
       const resolvedFields: FieldConfig[] = [];
       for (const entry of section.fields) {
@@ -321,13 +343,26 @@ export class ValidationEngine {
   private config: FormConfig;
   private schemaCompileError: string | null = null;
   private schemaRequiredSet: Set<string>;
-  private activeAsyncAborts = new Map<string, AbortController>();
+  private asyncManager: AsyncValidationManager;
 
-  constructor(config: FormConfig) {
+  constructor(config: FormConfig, asyncManager?: AsyncValidationManager) {
     this.config = config;
     this.ajv = createFormSchemaAjv();
     this.schemaRequiredSet = new Set(config.schema?.required ?? []);
+    this.asyncManager = asyncManager ?? new AsyncValidationManager();
     this.compileSchema(config.schema);
+  }
+
+  public getAsyncManager(): AsyncValidationManager {
+    return this.asyncManager;
+  }
+
+  public invalidateAsyncCache(fieldPath?: string): void {
+    if (!fieldPath) {
+      this.asyncManager.clearCache();
+    } else {
+      this.asyncManager.invalidateField(fieldPath);
+    }
   }
 
   public updateConfig(config: FormConfig): void {
@@ -335,6 +370,7 @@ export class ValidationEngine {
     const schemaChanged = config.schema !== this.config.schema;
     if (idChanged) {
       this.abortAsyncValidation();
+      this.asyncManager.clearCache();
     }
     this.config = config;
     this.schemaRequiredSet = new Set(config.schema?.required ?? []);
@@ -349,24 +385,7 @@ export class ValidationEngine {
    * otherwise aborts all active async validations across the form.
    */
   public abortAsyncValidation(fieldPath?: string): void {
-    if (!fieldPath) {
-      for (const controller of this.activeAsyncAborts.values()) {
-        controller.abort();
-      }
-      this.activeAsyncAborts.clear();
-      return;
-    }
-
-    for (const [key, controller] of this.activeAsyncAborts.entries()) {
-      if (
-        key === fieldPath ||
-        key.startsWith(`${fieldPath}.`) ||
-        key.startsWith(`${fieldPath}[`)
-      ) {
-        controller.abort();
-        this.activeAsyncAborts.delete(key);
-      }
-    }
+    this.asyncManager.abort(fieldPath);
   }
 
   public getSchemaCompileError(): string | null {
@@ -524,7 +543,34 @@ export class ValidationEngine {
       const label = resolveLocalizedText(field.label, locale, translations) ?? path;
       const fv = field.validation;
 
-      const required = isFieldRequired(field, values, this.schemaRequiredSet, path);
+      const rowSegs = path.split('.');
+      let rowPrefix: string | undefined;
+      let rowIndex: number | undefined;
+      for (let i = rowSegs.length - 2; i >= 0; i -= 1) {
+        if (/^\d+$/.test(rowSegs[i])) {
+          rowPrefix = rowSegs.slice(0, i + 1).join('.');
+          rowIndex = Number(rowSegs[i]);
+          break;
+        }
+      }
+      const condCtx = {
+        namedConditions: this.config.conditions,
+        rowPrefix,
+        rowIndex,
+      };
+
+      // Conditional validation gate (`validation.when`)
+      if (fv?.when && !evaluateCondition(fv.when, values, condCtx)) {
+        continue;
+      }
+
+      const required = isFieldRequired(
+        field,
+        values,
+        this.schemaRequiredSet,
+        path,
+        condCtx
+      );
       const empty =
         isEmptyValue(val) ||
         (field.type === 'checkbox' && required && val !== true);
@@ -1047,89 +1093,44 @@ export class ValidationEngine {
       if (!desc.parentVisible) continue;
       if (onlySet && !onlySet.has(desc.path)) continue;
 
-      const asyncCfg = desc.field.validation?.async;
-      if (!asyncCfg) continue;
+      const asyncCfgRaw = desc.field.validation?.async;
+      if (!asyncCfgRaw) continue;
+      const asyncCfgList = Array.isArray(asyncCfgRaw) ? asyncCfgRaw : [asyncCfgRaw];
 
       // Skip async call if synchronous validation already failed on this field or value is empty
       if (errorDetails[desc.path]?.length) continue;
       const val = getByPath(values, desc.path);
       if (isEmptyValue(val)) continue;
 
+      const condCtx = { namedConditions: this.config.conditions };
       if (
-        options?.trigger &&
-        options.trigger !== 'onSubmit' &&
-        asyncCfg.trigger &&
-        asyncCfg.trigger !== options.trigger
+        desc.field.validation?.when &&
+        !evaluateCondition(desc.field.validation.when, values, condCtx)
       ) {
         continue;
       }
 
-      const validator = asyncValidators[asyncCfg.validatorId];
-      if (!validator) continue;
-
-      // Abort any previous in-flight async check for this field
-      this.activeAsyncAborts.get(desc.path)?.abort();
-      const abortController = new AbortController();
-      this.activeAsyncAborts.set(desc.path, abortController);
-
       asyncTasks.push(
-        (async () => {
-          try {
-            const outcome = await validator({
-              field: desc.path,
-              value: val,
-              values,
-              params: asyncCfg.params,
-              locale,
-              signal: abortController.signal,
-            });
-            if (
-              abortController.signal.aborted ||
-              options?.isFieldStale?.(desc.path, val)
-            ) {
-              return;
-            }
-
-            if (outcome === false || (typeof outcome === 'string' && outcome.length > 0)) {
-              const message =
-                typeof outcome === 'string'
-                  ? outcome
-                  : asyncCfg.message ?? `${desc.path} failed server validation`;
+        this.asyncManager
+          .evaluateFieldRules({
+            fieldPath: desc.path,
+            value: val,
+            values,
+            rules: asyncCfgList,
+            validators: asyncValidators,
+            locale,
+            trigger: options?.trigger,
+            conditionContext: condCtx,
+            isFieldStale: options?.isFieldStale,
+          })
+          .then((fieldAsyncErrors) => {
+            if (fieldAsyncErrors.length > 0) {
               errorDetails[desc.path] = [
                 ...(errorDetails[desc.path] ?? []),
-                {
-                  field: desc.path,
-                  message,
-                  rule: asyncCfg.validatorId,
-                  source: 'async',
-                },
+                ...fieldAsyncErrors,
               ];
             }
-          } catch (err) {
-            if (
-              abortController.signal.aborted ||
-              options?.isFieldStale?.(desc.path, val)
-            ) {
-              return;
-            }
-            errorDetails[desc.path] = [
-              ...(errorDetails[desc.path] ?? []),
-              {
-                field: desc.path,
-                message:
-                  err instanceof Error
-                    ? err.message
-                    : asyncCfg.message ?? 'Validation request failed',
-                rule: asyncCfg.validatorId,
-                source: 'async',
-              },
-            ];
-          } finally {
-            if (this.activeAsyncAborts.get(desc.path) === abortController) {
-              this.activeAsyncAborts.delete(desc.path);
-            }
-          }
-        })()
+          })
       );
     }
 

@@ -83,22 +83,91 @@ export function formatNumberValue(
   return `${hasEmbeddedCurrency ? (format?.prefix ?? '') : prefix}${formatted}${suffix}`;
 }
 
+const EASTERN_ARABIC_ZERO = 0x0660;
+const EXTENDED_ARABIC_ZERO = 0x06f0;
+
+/**
+ * Normalizes Eastern Arabic (`٠-٩`) and Urdu/Persian Extended Arabic-Indic (`۰-۹`)
+ * digits + Arabic decimal separator (`٫`) into ASCII digits.
+ */
+export function normalizeLocalizedNumerals(raw: string): string {
+  let out = '';
+  for (let i = 0; i < raw.length; i += 1) {
+    const code = raw.charCodeAt(i);
+    if (code >= EASTERN_ARABIC_ZERO && code <= EASTERN_ARABIC_ZERO + 9) {
+      out += String(code - EASTERN_ARABIC_ZERO);
+    } else if (code >= EXTENDED_ARABIC_ZERO && code <= EXTENDED_ARABIC_ZERO + 9) {
+      out += String(code - EXTENDED_ARABIC_ZERO);
+    } else if (raw[i] === '٫') {
+      out += '.';
+    } else if (raw[i] === '٬') {
+      // Strip Arabic thousands separator
+    } else {
+      out += raw[i];
+    }
+  }
+  return out;
+}
+
+function usesCommaDecimalSeparator(locale?: string): boolean {
+  if (!locale) return false;
+  try {
+    const parts = new Intl.NumberFormat(locale).formatToParts(1.1);
+    const dec = parts.find((p) => p.type === 'decimal')?.value;
+    return dec === ',';
+  } catch {
+    return false;
+  }
+}
+
 export function parseNumericInput(
   raw: string,
-  options?: { integerOnly?: boolean; precision?: number }
+  options?: { integerOnly?: boolean; precision?: number; locale?: string }
 ): number | undefined {
-  if (raw.trim() === '') return undefined;
-  const cleaned = raw.replace(/[^0-9.-]/g, '');
+  const normalizedDigits = normalizeLocalizedNumerals(raw);
+  if (normalizedDigits.trim() === '') return undefined;
+
+  let canonical = normalizedDigits;
+  if (usesCommaDecimalSeparator(options?.locale)) {
+    // e.g. 'de-DE' / 'fr-FR': '1.234,56' -> '1234.56'
+    canonical = canonical.replace(/\./g, '').replace(/,/g, '.');
+  } else {
+    canonical = canonical.replace(/,/g, '');
+  }
+
+  const cleaned = canonical.replace(/[^0-9.-]/g, '');
   if (cleaned === '' || cleaned === '-' || cleaned === '.' || cleaned === '-.') {
     return undefined;
   }
-  const parsed = options?.integerOnly ? Number.parseInt(cleaned, 10) : Number.parseFloat(cleaned);
+  const parsed = options?.integerOnly
+    ? Number.parseInt(cleaned, 10)
+    : Number.parseFloat(cleaned);
   if (Number.isNaN(parsed)) return undefined;
   if (options?.precision !== undefined && !options.integerOnly) {
     const factor = 10 ** options.precision;
     return Math.round(parsed * factor) / factor;
   }
   return parsed;
+}
+
+export function resolvePluralizedText(
+  count: number,
+  forms: { zero?: string; one: string; other: string; few?: string; many?: string },
+  locale = 'en'
+): string {
+  if (count === 0 && forms.zero) return forms.zero.replace(/\{\{\s*count\s*\}\}/g, '0');
+  let category: Intl.LDMLPluralRule = 'other';
+  try {
+    category = new Intl.PluralRules(locale).select(count);
+  } catch {
+    category = count === 1 ? 'one' : 'other';
+  }
+  const template =
+    (category === 'one' && forms.one) ||
+    (category === 'few' && forms.few) ||
+    (category === 'many' && forms.many) ||
+    forms.other;
+  return template.replace(/\{\{\s*count\s*\}\}/g, String(count));
 }
 
 export function formatFileSize(bytes: number): string {

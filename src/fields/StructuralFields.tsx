@@ -44,6 +44,7 @@ export function StructuralFieldRenderer(props: FieldRendererProps) {
       return <DividerField />;
     case 'readOnly':
     case 'computed':
+    case 'calculated':
       return <ReadOnlyOrComputedField {...props} />;
     case 'section':
       return <InlineSectionField {...props} />;
@@ -265,6 +266,21 @@ function ObjectGroupField({ field, fieldPath, locale }: FieldRendererProps) {
   );
 }
 
+const REPEATER_ROW_KEYS = new WeakMap<object, string>();
+let nextRepeaterRowKeySeq = 1;
+
+function getStableRepeaterRowKey(rowItem: unknown, fallbackIndex: number): string {
+  if (rowItem && typeof rowItem === 'object') {
+    let existing = REPEATER_ROW_KEYS.get(rowItem);
+    if (!existing) {
+      existing = `row_${nextRepeaterRowKeySeq++}`;
+      REPEATER_ROW_KEYS.set(rowItem, existing);
+    }
+    return existing;
+  }
+  return `idx_${fallbackIndex}`;
+}
+
 function RepeaterField({
   field,
   fieldPath,
@@ -290,6 +306,7 @@ function RepeaterField({
   const maxItems = field.maxItems ?? field.validation?.maxItems;
   const canAdd = maxItems === undefined || items.length < maxItems;
   const canRemove = items.length > minItems;
+  const canReorder = field.reorderable !== false && items.length > 1;
 
   const createBlankRow = (): Record<string, unknown> => {
     const blank: Record<string, unknown> = {};
@@ -299,6 +316,7 @@ function RepeaterField({
           child.defaultValue !== undefined ? deepClone(child.defaultValue) : '';
       }
     }
+    getStableRepeaterRowKey(blank, items.length);
     return blank;
   };
 
@@ -312,26 +330,58 @@ function RepeaterField({
     onChange(items.filter((_, idx) => idx !== index));
   };
 
+  const moveRow = (fromIndex: number, toIndex: number) => {
+    if (!canReorder || disabled || readOnly) return;
+    if (toIndex < 0 || toIndex >= items.length || fromIndex === toIndex) return;
+    const next = [...items];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    onChange(next);
+  };
+
   const title = resolveLocalizedText(field.label, locale, config.i18n?.translations);
 
   return (
     <Column spacing={12} style={{ width: '100%' }} testID={`repeater-${fieldPath}`}>
       {title ? <Text textStyle={styles.labelStyle}>{title}</Text> : null}
 
-      {items.map((_, index) => {
+      {items.map((itemObj, index) => {
+        const stableKey = getStableRepeaterRowKey(itemObj, index);
         const itemTitle = (field.itemLabelTemplate ?? 'Item #{{index}}').replace(
           /\{\{\s*index\s*\}\}/g,
           String(index + 1)
         );
         return (
           <Column
-            key={`${fieldPath}-${index}`}
+            key={`${fieldPath}-${stableKey}`}
             spacing={12}
             style={formStyles.sectionBox}
             testID={`repeater-item-${fieldPath}-${index}`}>
-            <Row alignment="center" style={{ width: '100%' }}>
+            <Row alignment="center" spacing={4} style={{ width: '100%' }}>
               <Text textStyle={{ ...styles.labelStyle, fontWeight: '600' }}>{itemTitle}</Text>
               <Spacer flexible />
+              {!disabled && !readOnly && canReorder && index > 0 ? (
+                <NativeIconButton
+                  name="chevronUp"
+                  size={16}
+                  color={styles.iconColor}
+                  accessibilityLabel={`Move ${itemTitle} up`}
+                  testID={`repeater-move-up-${fieldPath}-${index}`}
+                  onPress={() => moveRow(index, index - 1)}
+                  renderOverride={renderIcon}
+                />
+              ) : null}
+              {!disabled && !readOnly && canReorder && index < items.length - 1 ? (
+                <NativeIconButton
+                  name="chevronDown"
+                  size={16}
+                  color={styles.iconColor}
+                  accessibilityLabel={`Move ${itemTitle} down`}
+                  testID={`repeater-move-down-${fieldPath}-${index}`}
+                  onPress={() => moveRow(index, index + 1)}
+                  renderOverride={renderIcon}
+                />
+              ) : null}
               {!disabled && !readOnly && canRemove ? (
                 <NativeIconButton
                   name="trash"

@@ -1,4 +1,8 @@
-import { ALL_BUILT_IN_FIELD_TYPES } from '../fields/FieldRegistry';
+import {
+  ALL_BUILT_IN_FIELD_TYPES,
+  BUILT_IN_FIELD_TYPE_ALIASES,
+} from '../fields/FieldRegistry';
+import { parseFormula } from '../formula';
 import type { ConfigSchemaIssue, FieldConfig, FormConfig } from '../types';
 import { hasUnsafePathSegment } from '../utils/deepPath';
 import {
@@ -47,7 +51,10 @@ const VALID_COMPUTED_OPERATIONS = new Set([
   'custom',
 ]);
 
-const BUILT_IN_TYPE_SET = new Set<string>(ALL_BUILT_IN_FIELD_TYPES);
+const BUILT_IN_TYPE_SET = new Set<string>([
+  ...ALL_BUILT_IN_FIELD_TYPES,
+  ...BUILT_IN_FIELD_TYPE_ALIASES,
+]);
 
 export interface ParseFormConfigOptions {
   /** Custom predicate checking if a field `type` is registered (built-in or custom). */
@@ -283,6 +290,17 @@ export function parseAndValidateFormConfig(
         checkRegexSyntax(m.pattern, m.flags, `${condPath}.matches.pattern`);
       }
     }
+    if (obj.operator === 'matches' && obj.value !== undefined) {
+      if (typeof obj.value === 'string') {
+        checkRegexSyntax(obj.value, undefined, `${condPath}.value`);
+      } else if (obj.value && typeof obj.value === 'object' && !Array.isArray(obj.value)) {
+        const m = obj.value as { pattern?: unknown; flags?: unknown };
+        checkRegexSyntax(m.pattern, m.flags, `${condPath}.value.pattern`);
+      }
+    }
+    if (Array.isArray(obj.conditions)) {
+      obj.conditions.forEach((sub, i) => validateCondition(sub, `${condPath}.conditions[${i}]`));
+    }
     if (Array.isArray(obj.and)) {
       obj.and.forEach((sub, i) => validateCondition(sub, `${condPath}.and[${i}]`));
     }
@@ -374,20 +392,62 @@ export function parseAndValidateFormConfig(
         });
       }
 
-      // Check computed formula
-      if (field.type === 'computed') {
-        if (!field.computed || typeof field.computed !== 'object' || !field.computed.operation) {
+      // Check computed / calculated formula
+      if (field.type === 'computed' || field.type === 'calculated') {
+        const hasFormulaExpr =
+          typeof field.formula === 'string' && field.formula.trim().length > 0;
+        if (!hasFormulaExpr) {
+          if (!field.computed || typeof field.computed !== 'object' || !field.computed.operation) {
+            issues.push({
+              path: `${itemPath}.computed`,
+              message: `Computed/calculated field "${field.name ?? idx}" requires either a "formula" expression string or a "computed" formula object with an "operation".`,
+              severity: 'error',
+            });
+          } else if (!VALID_COMPUTED_OPERATIONS.has(field.computed.operation)) {
+            issues.push({
+              path: `${itemPath}.computed.operation`,
+              message: `Unsupported computed operation "${field.computed.operation}". Supported: ${[...VALID_COMPUTED_OPERATIONS].join(', ')}.`,
+              severity: 'error',
+            });
+          }
+        }
+      }
+
+      if (field.formula !== undefined) {
+        if (typeof field.formula !== 'string' || !field.formula.trim()) {
           issues.push({
-            path: `${itemPath}.computed`,
-            message: `Computed field "${field.name ?? idx}" requires a "computed" formula object with an "operation".`,
+            path: `${itemPath}.formula`,
+            message: `Field "${field.name ?? idx}" "formula" must be a non-empty expression string.`,
             severity: 'error',
           });
-        } else if (!VALID_COMPUTED_OPERATIONS.has(field.computed.operation)) {
+        } else {
+          const parsedFormula = parseFormula(field.formula);
+          if (!parsedFormula.valid) {
+            issues.push({
+              path: `${itemPath}.formula`,
+              message: `Invalid formula on field "${field.name ?? idx}": ${parsedFormula.error}`,
+              severity: 'error',
+            });
+          }
+        }
+      }
+
+      if (field.defaultFormula !== undefined) {
+        if (typeof field.defaultFormula !== 'string' || !field.defaultFormula.trim()) {
           issues.push({
-            path: `${itemPath}.computed.operation`,
-            message: `Unsupported computed operation "${field.computed.operation}". Supported: ${[...VALID_COMPUTED_OPERATIONS].join(', ')}.`,
+            path: `${itemPath}.defaultFormula`,
+            message: `Field "${field.name ?? idx}" "defaultFormula" must be a non-empty expression string.`,
             severity: 'error',
           });
+        } else {
+          const parsedDefault = parseFormula(field.defaultFormula);
+          if (!parsedDefault.valid) {
+            issues.push({
+              path: `${itemPath}.defaultFormula`,
+              message: `Invalid defaultFormula on field "${field.name ?? idx}": ${parsedDefault.error}`,
+              severity: 'error',
+            });
+          }
         }
       }
 
@@ -418,11 +478,15 @@ export function parseAndValidateFormConfig(
         'hiddenWhen',
         'enabledWhen',
         'disabledWhen',
+        'readOnlyWhen',
         'requiredWhen',
       ] as const) {
         if (field[condKey] !== undefined) {
           validateCondition(field[condKey], `${itemPath}.${condKey}`);
         }
+      }
+      if (field.validation?.when !== undefined) {
+        validateCondition(field.validation.when, `${itemPath}.validation.when`);
       }
 
       // Check regex syntax & ReDoS safety upfront so malformed/unsafe regex in JSON is reported clearly
