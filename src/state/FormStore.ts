@@ -40,6 +40,7 @@ import type {
 import { createDebounced, type DebouncedFunction } from '../utils/debounce';
 import { deepClone, deepEqual, getByPath, setByPath } from '../utils/deepPath';
 import { collectSensitiveFieldPaths, omitSensitiveValues } from '../utils/security';
+import { normalizeServerValidationErrors } from '../validation/AsyncValidationManager';
 import { collectActiveFields, ValidationEngine } from '../validation/ValidationEngine';
 
 export interface FormStoreCallbacks {
@@ -1000,6 +1001,7 @@ export class FormStore {
     this.fieldValueVersion[fieldPath] = (this.fieldValueVersion[fieldPath] ?? 0) + 1;
     this.fieldValidationSeq[fieldPath] = (this.fieldValidationSeq[fieldPath] ?? 0) + 1;
     this.validationEngine.abortAsyncValidation(fieldPath);
+    this.validationEngine.invalidateAsyncCache(fieldPath);
     if (this.validatingFields[fieldPath]) {
       this.validatingFields[fieldPath] = false;
     }
@@ -1268,6 +1270,15 @@ export class FormStore {
     const firstMsg = fieldErrors[paths[0]] ?? formErrors?.[0];
     if (firstMsg) this.announceError(firstMsg);
     this.notifyPaths(paths);
+  }
+
+  public setServerErrorsFromPayload(payload: unknown): {
+    fieldErrors: Record<string, string>;
+    formErrors: string[];
+  } {
+    const normalized = normalizeServerValidationErrors(payload);
+    this.setServerErrors(normalized.fieldErrors, normalized.formErrors);
+    return normalized;
   }
 
   public clearErrors(fieldPath?: string): void {

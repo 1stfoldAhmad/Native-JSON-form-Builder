@@ -20,6 +20,7 @@ import {
   MAX_REGEX_INPUT_LENGTH,
   safeRegexTest,
 } from '../utils/regexSafety';
+import { AsyncValidationManager } from './AsyncValidationManager';
 import { evaluatePasswordStrength } from './passwordStrength';
 import {
   isValidCNIC,
@@ -342,13 +343,26 @@ export class ValidationEngine {
   private config: FormConfig;
   private schemaCompileError: string | null = null;
   private schemaRequiredSet: Set<string>;
-  private activeAsyncAborts = new Map<string, AbortController>();
+  private asyncManager: AsyncValidationManager;
 
-  constructor(config: FormConfig) {
+  constructor(config: FormConfig, asyncManager?: AsyncValidationManager) {
     this.config = config;
     this.ajv = createFormSchemaAjv();
     this.schemaRequiredSet = new Set(config.schema?.required ?? []);
+    this.asyncManager = asyncManager ?? new AsyncValidationManager();
     this.compileSchema(config.schema);
+  }
+
+  public getAsyncManager(): AsyncValidationManager {
+    return this.asyncManager;
+  }
+
+  public invalidateAsyncCache(fieldPath?: string): void {
+    if (!fieldPath) {
+      this.asyncManager.clearCache();
+    } else {
+      this.asyncManager.invalidateField(fieldPath);
+    }
   }
 
   public updateConfig(config: FormConfig): void {
@@ -356,6 +370,7 @@ export class ValidationEngine {
     const schemaChanged = config.schema !== this.config.schema;
     if (idChanged) {
       this.abortAsyncValidation();
+      this.asyncManager.clearCache();
     }
     this.config = config;
     this.schemaRequiredSet = new Set(config.schema?.required ?? []);
@@ -370,25 +385,7 @@ export class ValidationEngine {
    * otherwise aborts all active async validations across the form.
    */
   public abortAsyncValidation(fieldPath?: string): void {
-    if (!fieldPath) {
-      for (const controller of this.activeAsyncAborts.values()) {
-        controller.abort();
-      }
-      this.activeAsyncAborts.clear();
-      return;
-    }
-
-    for (const [key, controller] of this.activeAsyncAborts.entries()) {
-      if (
-        key === fieldPath ||
-        key.startsWith(`${fieldPath}.`) ||
-        key.startsWith(`${fieldPath}[`) ||
-        key.startsWith(`${fieldPath}::`)
-      ) {
-        controller.abort();
-        this.activeAsyncAborts.delete(key);
-      }
-    }
+    this.asyncManager.abort(fieldPath);
   }
 
   public getSchemaCompileError(): string | null {
@@ -1113,88 +1110,28 @@ export class ValidationEngine {
         continue;
       }
 
-      for (const asyncCfg of asyncCfgList) {
-        if (asyncCfg.when && !evaluateCondition(asyncCfg.when, values, condCtx)) {
-          continue;
-        }
-        if (
-          options?.trigger &&
-          options.trigger !== 'onSubmit' &&
-          asyncCfg.trigger &&
-          asyncCfg.trigger !== options.trigger
-        ) {
-          continue;
-        }
-
-        const validator = asyncValidators[asyncCfg.validatorId];
-        if (!validator) continue;
-
-        const abortKey = `${desc.path}::${asyncCfg.validatorId}`;
-        // Abort any previous in-flight async check for this field+rule
-        this.activeAsyncAborts.get(abortKey)?.abort();
-        const abortController = new AbortController();
-        this.activeAsyncAborts.set(abortKey, abortController);
-
-        asyncTasks.push(
-          (async () => {
-            try {
-              const outcome = await validator({
-                field: desc.path,
-                value: val,
-                values,
-                params: asyncCfg.params,
-                locale,
-                signal: abortController.signal,
-              });
-              if (
-                abortController.signal.aborted ||
-                options?.isFieldStale?.(desc.path, val)
-              ) {
-                return;
-              }
-
-              if (outcome === false || (typeof outcome === 'string' && outcome.length > 0)) {
-                const message =
-                  typeof outcome === 'string'
-                    ? outcome
-                    : asyncCfg.message ?? `${desc.path} failed server validation`;
-                errorDetails[desc.path] = [
-                  ...(errorDetails[desc.path] ?? []),
-                  {
-                    field: desc.path,
-                    message,
-                    rule: asyncCfg.validatorId,
-                    source: 'async',
-                  },
-                ];
-              }
-            } catch (err) {
-              if (
-                abortController.signal.aborted ||
-                options?.isFieldStale?.(desc.path, val)
-              ) {
-                return;
-              }
+      asyncTasks.push(
+        this.asyncManager
+          .evaluateFieldRules({
+            fieldPath: desc.path,
+            value: val,
+            values,
+            rules: asyncCfgList,
+            validators: asyncValidators,
+            locale,
+            trigger: options?.trigger,
+            conditionContext: condCtx,
+            isFieldStale: options?.isFieldStale,
+          })
+          .then((fieldAsyncErrors) => {
+            if (fieldAsyncErrors.length > 0) {
               errorDetails[desc.path] = [
                 ...(errorDetails[desc.path] ?? []),
-                {
-                  field: desc.path,
-                  message:
-                    err instanceof Error
-                      ? err.message
-                      : asyncCfg.message ?? 'Validation request failed',
-                  rule: asyncCfg.validatorId,
-                  source: 'async',
-                },
+                ...fieldAsyncErrors,
               ];
-            } finally {
-              if (this.activeAsyncAborts.get(abortKey) === abortController) {
-                this.activeAsyncAborts.delete(abortKey);
-              }
             }
-          })()
-        );
-      }
+          })
+      );
     }
 
     if (asyncTasks.length > 0) {

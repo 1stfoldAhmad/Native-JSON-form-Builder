@@ -92,6 +92,20 @@ export {
 
 // Validation, conditions, computed fields, state, styles, animations, uploads
 export { ValidationEngine, collectActiveFields } from './validation/ValidationEngine';
+export {
+  AsyncValidationManager,
+  normalizeServerValidationErrors,
+  type AsyncValidationManagerOptions,
+} from './validation/AsyncValidationManager';
+export {
+  DataSourceManager,
+  interpolateDataSourceUrl,
+  mapRawItemToFieldOption,
+  type AuthHeaderProvider,
+  type DataSourceManagerOptions,
+  type FetchLike,
+  type LoadFieldOptionsRequest,
+} from './datasources';
 export { evaluatePasswordStrength } from './validation/passwordStrength';
 export {
   VALIDATION_PATTERNS,

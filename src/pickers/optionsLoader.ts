@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
+import { ActiveFormContext } from '../core/context';
+import { DataSourceManager } from '../datasources/DataSourceManager';
 import type {
   DataSourceProvider,
-  DataSourceResult,
   FieldConfig,
   FieldDataSourceConfig,
   FieldOption,
@@ -19,15 +20,20 @@ export function normalizeFieldOptions(
 }
 
 export function normalizeDataSourceConfig(
-  ds: string | FieldDataSourceConfig | undefined
+  ds: string | FieldDataSourceConfig | undefined,
+  definitions?: Record<string, FieldDataSourceConfig>
 ): FieldDataSourceConfig | null {
   if (!ds) return null;
-  if (typeof ds === 'string') return { id: ds };
-  return ds;
+  if (typeof ds === 'string') {
+    return definitions?.[ds] ?? { id: ds };
+  }
+  const base = definitions?.[ds.id];
+  return base ? { ...base, ...ds } : ds;
 }
 
 export interface UseFieldOptionsParams {
   field: FieldConfig;
+  fieldPath?: string;
   dataSources: Record<string, DataSourceProvider>;
   getFieldValue: (path: string) => unknown;
   locale: string;
@@ -36,13 +42,36 @@ export interface UseFieldOptionsParams {
 
 export function useFieldOptions({
   field,
+  fieldPath,
   dataSources,
   getFieldValue,
   locale,
   searchQuery = '',
 }: UseFieldOptionsParams) {
-  const staticOptions = useMemo(() => normalizeFieldOptions(field.options), [field.options]);
-  const dsConfig = useMemo(() => normalizeDataSourceConfig(field.dataSource), [field.dataSource]);
+  const activeForm = useContext(ActiveFormContext);
+  const formDefinitions = activeForm?.config.dataSources;
+
+  const staticOptions = useMemo(
+    () => normalizeFieldOptions(field.options),
+    [field.options]
+  );
+  const dsConfig = useMemo(
+    () => normalizeDataSourceConfig(field.dataSource, formDefinitions),
+    [field.dataSource, formDefinitions]
+  );
+
+  const managerRef = useRef<DataSourceManager | null>(null);
+  if (!managerRef.current) {
+    managerRef.current = new DataSourceManager({
+      providers: dataSources,
+      definitions: formDefinitions,
+    });
+  } else {
+    managerRef.current.updateOptions({
+      providers: dataSources,
+      definitions: formDefinitions,
+    });
+  }
 
   const [remoteOptions, setRemoteOptions] = useState<FieldOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -50,25 +79,18 @@ export function useFieldOptions({
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
 
+  const effectivePath = fieldPath ?? field.name ?? field.id ?? 'picker';
+
   const depValuesKey = useMemo(() => {
     if (!dsConfig?.dependsOn?.length) return '';
-    return dsConfig.dependsOn.map((d) => `${d}:${String(getFieldValue(d) ?? '')}`).join('|');
+    return dsConfig.dependsOn
+      .map((d) => `${d}:${String(getFieldValue(d) ?? '')}`)
+      .join('|');
   }, [dsConfig, getFieldValue]);
 
-  const abortRef = useRef<AbortController | null>(null);
-
   const executeFetch = useCallback(
-    async (query: string, targetPage: number, append: boolean) => {
-      if (!dsConfig) return;
-      const provider = dataSources[dsConfig.id];
-      if (!provider) {
-        setRemoteOptions([]);
-        return;
-      }
-
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
+    async (query: string, targetPage: number, append: boolean, bypassCache = false) => {
+      if (!dsConfig || !managerRef.current) return;
 
       const dependencies: Record<string, unknown> = {};
       for (const dep of dsConfig.dependsOn ?? []) {
@@ -76,50 +98,32 @@ export function useFieldOptions({
       }
 
       setError(null);
-
-      const applyResolved = (res: FieldOption[] | DataSourceResult) => {
-        let list: FieldOption[];
-        let more = false;
-        if (Array.isArray(res)) {
-          list = res;
-        } else {
-          const structured = res as DataSourceResult;
-          list = structured.options ?? [];
-          more = Boolean(structured.hasMore);
-        }
-        setRemoteOptions((prev) => (append ? [...prev, ...list] : list));
-        setPage(targetPage);
-        setHasMore(more);
-        setLoading(false);
-      };
+      setLoading(true);
 
       try {
-        const rawRes = provider({
+        const res = await managerRef.current.loadFieldOptions({
+          fieldPath: effectivePath,
+          config: dsConfig,
+          dependencies,
           query,
           page: targetPage,
           pageSize: dsConfig.pageSize ?? 25,
-          dependencies,
-          params: dsConfig.params,
           locale,
-          signal: controller.signal,
+          bypassCache,
         });
 
-        if (rawRes && typeof (rawRes as PromiseLike<unknown>).then === 'function') {
-          setLoading(true);
-          const res = await rawRes;
-          if (controller.signal.aborted) return;
-          applyResolved(res);
-        } else {
-          applyResolved(rawRes as FieldOption[] | DataSourceResult);
-        }
+        setRemoteOptions((prev) =>
+          append ? [...prev, ...res.options] : res.options
+        );
+        setPage(targetPage);
+        setHasMore(Boolean(res.hasMore));
+        setLoading(false);
       } catch (err) {
-        if (!controller.signal.aborted) {
-          setError(err instanceof Error ? err.message : 'Failed to load options');
-          setLoading(false);
-        }
+        setError(err instanceof Error ? err.message : 'Failed to load options');
+        setLoading(false);
       }
     },
-    [dsConfig, dataSources, getFieldValue, locale]
+    [dsConfig, effectivePath, getFieldValue, locale]
   );
 
   const debouncedQueryFetch = useMemo(
@@ -143,12 +147,23 @@ export function useFieldOptions({
     };
   }, [dsConfig, depValuesKey, searchQuery, executeFetch, debouncedQueryFetch]);
 
+  useEffect(() => {
+    const mgr = managerRef.current;
+    return () => {
+      mgr?.abortAll();
+    };
+  }, []);
+
   const loadMore = useCallback(() => {
     if (!dsConfig || loading || !hasMore) return;
     void executeFetch(searchQuery, page + 1, true);
   }, [dsConfig, loading, hasMore, executeFetch, searchQuery, page]);
 
-  // Combine static options (filtered locally when no remote dsConfig) or remote options
+  const retry = useCallback(() => {
+    if (!dsConfig) return;
+    void executeFetch(searchQuery, 1, false, true);
+  }, [dsConfig, executeFetch, searchQuery]);
+
   const options = useMemo(() => {
     if (dsConfig) {
       return remoteOptions;
@@ -173,6 +188,7 @@ export function useFieldOptions({
     error,
     hasMore,
     loadMore,
+    retry,
     isRemote: Boolean(dsConfig),
   };
 }
