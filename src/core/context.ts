@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 
+import type { PluginRegistry } from '../plugins/PluginRegistry';
 import type { FormStore } from '../state/FormStore';
 import type {
   ActionHandler,
@@ -40,6 +41,7 @@ export interface ExpoFormGlobalConfigContextValue {
   customFields: Record<string, FieldComponent>;
   renderIcon?: IconRenderOverride;
   storageAdapter?: DraftStorageAdapter;
+  pluginRegistry?: PluginRegistry;
 }
 
 export const ExpoFormGlobalConfigContext = createContext<ExpoFormGlobalConfigContextValue>({

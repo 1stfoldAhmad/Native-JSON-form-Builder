@@ -1,5 +1,6 @@
 import { useMemo, type ReactNode } from 'react';
 
+import type { PluginRegistry } from '../plugins/PluginRegistry';
 import type {
   ActionHandler,
   AsyncFieldValidator,
@@ -39,6 +40,8 @@ export interface ExpoFormProviderProps {
   renderIcon?: IconRenderOverride;
   /** Optional global draft storage adapter. */
   storageAdapter?: DraftStorageAdapter;
+  /** Optional isolated PluginRegistry providing custom fields, validators, formulas, themes, and middleware. */
+  pluginRegistry?: PluginRegistry;
   /** Optional grouped global configuration object (alternative to passing individual props). */
   config?: Omit<ExpoFormProviderProps, 'children' | 'config'>;
 }
@@ -60,10 +63,23 @@ export function ExpoFormProvider({
   customFields,
   renderIcon,
   storageAdapter,
+  pluginRegistry,
   config,
 }: ExpoFormProviderProps) {
   const parent = useExpoFormGlobalConfig();
   const effectiveCreateHost = createHost ?? config?.createHost ?? false;
+  const effectivePluginRegistry =
+    pluginRegistry ?? config?.pluginRegistry ?? parent.pluginRegistry;
+
+  const pluginCustomFields = useMemo(() => {
+    if (!effectivePluginRegistry) return undefined;
+    const out: Record<string, FieldComponent> = {};
+    for (const typeName of effectivePluginRegistry.fields.getTypes()) {
+      const def = effectivePluginRegistry.fields.get(typeName);
+      if (def) out[typeName] = def.component;
+    }
+    return out;
+  }, [effectivePluginRegistry]);
 
   const mergedValue = useMemo(
     () => ({
@@ -72,32 +88,38 @@ export function ExpoFormProvider({
       colorScheme: colorScheme ?? config?.colorScheme ?? parent.colorScheme,
       dataSources: {
         ...BUILT_IN_DATA_SOURCES,
+        ...effectivePluginRegistry?.getDataSourcesObject(),
         ...parent.dataSources,
         ...config?.dataSources,
         ...dataSources,
       },
       asyncValidators: {
+        ...effectivePluginRegistry?.getAsyncValidatorsObject(),
         ...parent.asyncValidators,
         ...config?.asyncValidators,
         ...asyncValidators,
       },
       actions: {
+        ...effectivePluginRegistry?.getWorkflowActionsObject(),
         ...parent.actions,
         ...config?.actions,
         ...actions,
       },
       calculators: {
+        ...effectivePluginRegistry?.getCalculatorsObject(),
         ...parent.calculators,
         ...config?.calculators,
         ...calculators,
       },
       customFields: {
+        ...pluginCustomFields,
         ...parent.customFields,
         ...config?.customFields,
         ...customFields,
       },
       renderIcon: renderIcon ?? config?.renderIcon ?? parent.renderIcon,
       storageAdapter: storageAdapter ?? config?.storageAdapter ?? parent.storageAdapter,
+      pluginRegistry: effectivePluginRegistry,
     }),
     [
       theme,
@@ -110,6 +132,8 @@ export function ExpoFormProvider({
       customFields,
       renderIcon,
       storageAdapter,
+      effectivePluginRegistry,
+      pluginCustomFields,
       config,
       parent,
     ]

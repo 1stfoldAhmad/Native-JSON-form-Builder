@@ -8,6 +8,7 @@ import jobApplicationJson from '../../forms/job-application.json';
 import kycWizardJson from '../../forms/kyc-wizard.json';
 import loginJson from '../../forms/login.json';
 import registerJson from '../../forms/register.json';
+import vehicleRegistrationEnterpriseJson from '../../forms/vehicle-registration-enterprise.json';
 
 export const registerFormConfig = registerJson as unknown as FormConfig;
 export const loginFormConfig = loginJson as unknown as FormConfig;
@@ -17,6 +18,8 @@ export const jobApplicationFormConfig = jobApplicationJson as unknown as FormCon
 export const contactSupportFormConfig = contactSupportJson as unknown as FormConfig;
 export const kycWizardFormConfig = kycWizardJson as unknown as FormConfig;
 export const feedbackSurveyFormConfig = feedbackSurveyJson as unknown as FormConfig;
+export const vehicleRegistrationEnterpriseConfig =
+  vehicleRegistrationEnterpriseJson as unknown as FormConfig;
 
 export interface DemoFormEntry {
   slug: string;
@@ -28,7 +31,8 @@ export interface DemoFormEntry {
     | '/job-application'
     | '/contact-support'
     | '/kyc-wizard'
-    | '/feedback-survey';
+    | '/feedback-survey'
+    | '/enterprise-vehicle';
   title: string;
   subtitle: string;
   badge: string;
@@ -167,5 +171,21 @@ export const DEMO_FORMS: readonly DemoFormEntry[] = [
       'Date range availability',
     ],
     config: feedbackSurveyFormConfig,
+  },
+  {
+    slug: 'enterprise-vehicle',
+    route: '/enterprise-vehicle',
+    title: 'Enterprise Vehicle Assessment',
+    subtitle:
+      'Levels 1–4 showcase: FormulaEngine, skipWhen step workflow, QR chassis scanner, documentScan, GPS, and reorderable repeater.',
+    badge: 'Enterprise',
+    category: 'Business & Operations',
+    iconName: 'car-sport-outline',
+    highlights: [
+      'Live FormulaEngine + SUM(items.*.total)',
+      'Conditional step skipWhen',
+      'QR / DocumentScan / GPS / Signature',
+    ],
+    config: vehicleRegistrationEnterpriseConfig,
   },
 ];

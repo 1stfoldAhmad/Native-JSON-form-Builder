@@ -53,10 +53,11 @@ export function FieldNodeRenderer({
         ? false
         : field.name
           ? runtime.visible
-          : isFieldVisible(field, valuesRef, {
-              namedConditions: config.conditions,
-              rowPrefix: pathPrefix || undefined,
-            });
+          : isFieldVisible(
+              field,
+              valuesRef,
+              s.getConditionContext(pathPrefix || undefined)
+            );
     const rawError = s.getRawError(fieldPath);
     const submitStatus = s.getState().submitStatus;
     return {

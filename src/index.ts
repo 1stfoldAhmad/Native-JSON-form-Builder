@@ -167,6 +167,48 @@ export {
 } from './utils/formatting';
 export { resolveResponsiveColumnCount } from './renderer/FormRenderer';
 export {
+  ThemeRegistry,
+  defaultThemeRegistry,
+  type RegisteredFormTheme,
+} from './styles/ThemeRegistry';
+export {
+  createFieldPackage,
+  type CustomFieldValidatorFn,
+  type FieldPackageDefinition,
+} from './fields/createFieldPackage';
+export {
+  MiddlewarePipeline,
+  PluginRegistry,
+  type FieldChangeMiddlewarePayload,
+  type FormLifecycleHookName,
+  type FormPlugin,
+  type MiddlewareHandler,
+  type MiddlewarePayloadMap,
+  type MiddlewarePipelineOptions,
+  type PluginRegistryOptions,
+  type StepChangeMiddlewarePayload,
+  type SubmitMiddlewarePayload,
+} from './plugins';
+export {
+  diffFormSchemas,
+  generateFormValuesTypeScript,
+  validateMigrationChain,
+  type SchemaDiffChange,
+  type SchemaDiffKind,
+  type SchemaDiffReport,
+  type SubmissionMigrationStep,
+  type TypeGeneratorOptions,
+} from './tooling';
+export {
+  PerformanceProfiler,
+  REDACTED_SENSITIVE_TOKEN,
+  inspectFormRuntime,
+  type FormDiagnosticSnapshot,
+  type PerformanceProfileReport,
+  type ProfilerMetricCategory,
+  type ProfilerMetricSummary,
+} from './devtools';
+export {
   PlatformCapabilityRegistry,
   defaultCapabilityRegistry,
   type BarcodeScanResult,

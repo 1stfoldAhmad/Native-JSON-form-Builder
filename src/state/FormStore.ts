@@ -6,6 +6,7 @@ import {
   type CompiledFormPlan,
 } from '../compiler';
 import { evaluateComputedField } from '../conditions/computed';
+import type { ConditionRegistry } from '../conditions/ConditionRegistry';
 import {
   collectFieldDependencies,
   evaluateCondition,
@@ -20,7 +21,7 @@ import {
   toWildcardTemplatePath,
   type DependencyGraph,
 } from '../engine/DependencyGraph';
-import { evaluateFormula } from '../formula';
+import { evaluateFormula, type FormulaFunctionRegistry } from '../formula';
 import type {
   ActionHandler,
   AsyncFieldValidator,
@@ -72,6 +73,8 @@ export interface FormStoreInitOptions {
   asyncValidators?: Record<string, AsyncFieldValidator>;
   actions?: Record<string, ActionHandler>;
   calculators?: Record<string, ComputedCalculator>;
+  functionRegistry?: FormulaFunctionRegistry;
+  conditionRegistry?: ConditionRegistry;
   storageAdapter?: DraftStorageAdapter;
   locale?: string;
   disabled?: boolean;
@@ -185,6 +188,8 @@ export class FormStore {
   private asyncValidators?: Record<string, AsyncFieldValidator>;
   private actions?: Record<string, ActionHandler>;
   private calculators?: Record<string, ComputedCalculator>;
+  private functionRegistry?: FormulaFunctionRegistry;
+  private conditionRegistry?: ConditionRegistry;
   private storageAdapter?: DraftStorageAdapter;
   private onScrollToField?: (fieldName: string, options?: ScrollToFieldOptions) => void;
   private locale: string;
@@ -240,13 +245,19 @@ export class FormStore {
     this.asyncValidators = options.asyncValidators;
     this.actions = options.actions;
     this.calculators = options.calculators;
+    this.functionRegistry = options.functionRegistry;
+    this.conditionRegistry = options.conditionRegistry;
     this.storageAdapter = options.storageAdapter;
     this.onScrollToField = options.onScrollToField;
     this.locale = options.locale ?? options.config.i18n?.locale ?? 'en';
     this.formDisabled = Boolean(options.disabled ?? options.config.disabled);
     this.formReadOnly = Boolean(options.readOnly ?? options.config.readOnly);
 
-    this.compiledPlan = compileFormSchema(this.config);
+    this.compiledPlan = compileFormSchema(this.config, {
+      formulaRegistry: this.functionRegistry,
+      conditionRegistry: this.conditionRegistry,
+      bypassCache: Boolean(this.functionRegistry || this.conditionRegistry),
+    });
     this.validationEngine = new ValidationEngine(this.config);
     this.sensitivePaths = collectSensitiveFieldPaths(this.config, this.config.security);
     this.builtInSecretPaths = collectSensitiveFieldPaths(
@@ -274,6 +285,8 @@ export class FormStore {
     if (options.asyncValidators !== undefined) this.asyncValidators = options.asyncValidators;
     if (options.actions !== undefined) this.actions = options.actions;
     if (options.calculators !== undefined) this.calculators = options.calculators;
+    if (options.functionRegistry !== undefined) this.functionRegistry = options.functionRegistry;
+    if (options.conditionRegistry !== undefined) this.conditionRegistry = options.conditionRegistry;
     if (options.storageAdapter !== undefined) this.storageAdapter = options.storageAdapter;
     if (options.onScrollToField !== undefined) this.onScrollToField = options.onScrollToField;
 
@@ -298,7 +311,11 @@ export class FormStore {
     if (options.config && options.config !== this.config) {
       const prevId = this.config.id;
       this.config = options.config;
-      this.compiledPlan = compileFormSchema(this.config);
+      this.compiledPlan = compileFormSchema(this.config, {
+        formulaRegistry: this.functionRegistry,
+        conditionRegistry: this.conditionRegistry,
+        bypassCache: Boolean(this.functionRegistry || this.conditionRegistry),
+      });
       this.validationEngine.updateConfig(options.config);
       this.sensitivePaths = collectSensitiveFieldPaths(this.config, this.config.security);
       this.builtInSecretPaths = collectSensitiveFieldPaths(
@@ -445,12 +462,20 @@ export class FormStore {
     }
   }
 
+  public getConfig(): FormConfig {
+    return this.config;
+  }
+
   public getCompiledPlan(): CompiledFormPlan {
     return this.compiledPlan;
   }
 
   public getDependencyGraph(): DependencyGraph {
     return this.compiledPlan.graph;
+  }
+
+  public getConditionContext(concretePath?: string): ConditionEvaluationContext {
+    return this.buildConditionContext(concretePath);
   }
 
   /**
@@ -497,6 +522,7 @@ export class FormStore {
     const scope = concretePath ? this.extractRowScope(concretePath) : {};
     return {
       namedConditions: this.compiledPlan.namedConditions,
+      registry: this.conditionRegistry,
       rowPrefix: scope.rowPrefix,
       rowIndex: scope.rowIndex,
     };
@@ -537,6 +563,7 @@ export class FormStore {
     if (node?.formulaAst) {
       const res = evaluateFormula(node.formulaAst, this.values, {
         ...scope,
+        functionRegistry: this.functionRegistry,
         precision: node.field.precision ?? node.field.computed?.precision,
       });
       return res.value;

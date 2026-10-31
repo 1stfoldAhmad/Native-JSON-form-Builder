@@ -128,8 +128,8 @@ export function ExpoForm<TValues extends FormValues = FormValues>({
   const isRTL = isRTLLocale(activeLocale, parsed.config?.i18n?.direction);
 
   const palette = useMemo(
-    () => resolvePalette(effectiveTheme, activeColorScheme),
-    [effectiveTheme, activeColorScheme]
+    () => resolvePalette(effectiveTheme, activeColorScheme, globalCfg.pluginRegistry?.themes),
+    [effectiveTheme, activeColorScheme, globalCfg.pluginRegistry]
   );
 
   const scrollToField = useCallback(
@@ -188,6 +188,8 @@ export function ExpoForm<TValues extends FormValues = FormValues>({
       asyncValidators: mergedAsyncValidators,
       actions: mergedActions,
       calculators: globalCfg.calculators,
+      functionRegistry: globalCfg.pluginRegistry?.formulaFunctions,
+      conditionRegistry: globalCfg.pluginRegistry?.conditions,
       storageAdapter: localStorageAdapter ?? globalCfg.storageAdapter,
       locale: activeLocale,
       disabled,

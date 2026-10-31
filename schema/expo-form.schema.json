@@ -152,6 +152,35 @@
       },
       "additionalProperties": false
     },
+    "conditions": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/ConditionExpression" },
+      "description": "Named reusable condition definitions referenced via \"$condition:name\" or { \"$condition\": \"name\" }."
+    },
+    "dataSources": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/FieldDataSourceConfig" },
+      "description": "Reusable declarative data source definitions ('static', 'provider', or 'rest')."
+    },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Optional multi-stage approval workflow & lifecycle transitions."
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "required": { "type": "array", "items": { "type": "string" } },
+        "optional": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false,
+      "description": "Explicit native hardware capability declarations."
+    },
+    "plugins": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Optional plugin IDs expected by this form schema."
+    },
     "disabled": { "type": "boolean" },
     "readOnly": { "type": "boolean" }
   },
@@ -291,9 +320,25 @@
         { "type": "string", "minLength": 1 },
         {
           "type": "object",
-          "required": ["id"],
           "properties": {
             "id": { "type": "string", "minLength": 1 },
+            "type": { "type": "string", "enum": ["static", "provider", "rest"] },
+            "options": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/FieldOption" }
+            },
+            "url": { "type": "string" },
+            "method": { "type": "string", "enum": ["GET", "POST"] },
+            "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+            "authProviderId": { "type": "string" },
+            "responsePath": { "type": "string" },
+            "labelKey": { "type": "string" },
+            "valueKey": { "type": "string" },
+            "descriptionKey": { "type": "string" },
+            "searchParam": { "type": "string" },
+            "pageParam": { "type": "string" },
+            "pageSizeParam": { "type": "string" },
+            "cacheTtlMs": { "type": "number", "minimum": 0 },
             "dependsOn": { "type": "array", "items": { "type": "string" } },
             "resetOnDependencyChange": { "type": "boolean" },
             "debounceMs": { "type": "number", "minimum": 0 },
@@ -307,47 +352,69 @@
       ]
     },
     "ConditionExpression": {
-      "type": "object",
-      "properties": {
-        "field": { "type": "string" },
-        "equals": {},
-        "notEquals": {},
-        "contains": {},
-        "notContains": {},
-        "in": { "type": "array" },
-        "notIn": { "type": "array" },
-        "greaterThan": { "type": ["number", "string"] },
-        "greaterThanOrEqual": { "type": ["number", "string"] },
-        "lessThan": { "type": ["number", "string"] },
-        "lessThanOrEqual": { "type": ["number", "string"] },
-        "matches": {
-          "oneOf": [
-            { "type": "string" },
-            {
-              "type": "object",
-              "required": ["pattern"],
-              "properties": {
-                "pattern": { "type": "string" },
-                "flags": { "type": "string" }
-              }
-            }
-          ]
-        },
-        "isEmpty": { "type": "boolean" },
-        "isNotEmpty": { "type": "boolean" },
-        "equalsField": { "type": "string" },
-        "notEqualsField": { "type": "string" },
-        "and": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/ConditionExpression" }
-        },
-        "or": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/ConditionExpression" }
-        },
-        "not": { "$ref": "#/$defs/ConditionExpression" }
-      },
-      "additionalProperties": true
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "properties": {
+            "$condition": { "type": "string" },
+            "field": { "type": "string" },
+            "equals": {},
+            "notEquals": {},
+            "contains": {},
+            "notContains": {},
+            "startsWith": { "type": "string" },
+            "endsWith": { "type": "string" },
+            "in": { "type": "array" },
+            "notIn": { "type": "array" },
+            "greaterThan": { "type": ["number", "string"] },
+            "greaterThanOrEqual": { "type": ["number", "string"] },
+            "lessThan": { "type": ["number", "string"] },
+            "lessThanOrEqual": { "type": ["number", "string"] },
+            "between": { "type": "array", "minItems": 2, "maxItems": 2 },
+            "isTrue": { "type": "boolean" },
+            "isFalse": { "type": "boolean" },
+            "includesAny": { "type": "array" },
+            "includesAll": { "type": "array" },
+            "hasLength": {},
+            "dateBefore": { "type": "string" },
+            "dateAfter": { "type": "string" },
+            "matches": {
+              "oneOf": [
+                { "type": "string" },
+                {
+                  "type": "object",
+                  "required": ["pattern"],
+                  "properties": {
+                    "pattern": { "type": "string" },
+                    "flags": { "type": "string" }
+                  }
+                }
+              ]
+            },
+            "isEmpty": { "type": "boolean" },
+            "isNotEmpty": { "type": "boolean" },
+            "equalsField": { "type": "string" },
+            "notEqualsField": { "type": "string" },
+            "greaterThanField": { "type": "string" },
+            "greaterThanOrEqualField": { "type": "string" },
+            "lessThanField": { "type": "string" },
+            "lessThanOrEqualField": { "type": "string" },
+            "operator": { "type": "string" },
+            "value": {},
+            "and": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/ConditionExpression" }
+            },
+            "or": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/ConditionExpression" }
+            },
+            "not": { "$ref": "#/$defs/ConditionExpression" }
+          },
+          "additionalProperties": true
+        }
+      ]
     },
     "ComputedFieldFormula": {
       "type": "object",
@@ -524,7 +591,38 @@
         "addButtonLabel": { "type": "string" },
         "removeButtonLabel": { "type": "string" },
         "itemLabelTemplate": { "type": "string" },
+        "reorderable": { "type": "boolean" },
         "computed": { "$ref": "#/$defs/ComputedFieldFormula" },
+        "formula": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            {
+              "type": "object",
+              "required": ["expression"],
+              "properties": {
+                "expression": { "type": "string", "minLength": 1 },
+                "precision": { "type": "integer", "minimum": 0 },
+                "fallback": {}
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "scan": {
+          "type": "object",
+          "properties": {
+            "formats": { "type": "array", "items": { "type": "string" } },
+            "extractPattern": { "type": "string" },
+            "preventDuplicates": { "type": "boolean" },
+            "continuous": { "type": "boolean" },
+            "scanButtonLabel": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "permissions": {
+          "type": "object",
+          "additionalProperties": true
+        },
         "width": { "type": ["number", "string"] },
         "columns": { "type": "integer", "minimum": 1 },
         "row": { "type": "string" },
@@ -532,6 +630,7 @@
         "hiddenWhen": { "$ref": "#/$defs/ConditionExpression" },
         "enabledWhen": { "$ref": "#/$defs/ConditionExpression" },
         "disabledWhen": { "$ref": "#/$defs/ConditionExpression" },
+        "readOnlyWhen": { "$ref": "#/$defs/ConditionExpression" },
         "requiredWhen": { "$ref": "#/$defs/ConditionExpression" },
         "validation": { "$ref": "#/$defs/FieldValidationConfig" },
         "style": { "type": "object" },
@@ -581,6 +680,9 @@
         },
         "validateBeforeNext": { "type": "boolean" },
         "visibleWhen": { "$ref": "#/$defs/ConditionExpression" },
+        "hiddenWhen": { "$ref": "#/$defs/ConditionExpression" },
+        "skipWhen": { "$ref": "#/$defs/ConditionExpression" },
+        "permissions": { "type": "object", "additionalProperties": true },
         "nextLabel": { "$ref": "#/$defs/LocalizedText" },
         "previousLabel": { "$ref": "#/$defs/LocalizedText" }
       },
@@ -593,6 +695,8 @@
         "columns": { "type": "integer", "minimum": 1 },
         "tabletColumns": { "type": "integer", "minimum": 1 },
         "tabletBreakpoint": { "type": "number", "minimum": 240 },
+        "desktopColumns": { "type": "integer", "minimum": 1 },
+        "desktopBreakpoint": { "type": "number", "minimum": 480 },
         "rowGap": { "type": "number", "minimum": 0 },
         "columnGap": { "type": "number", "minimum": 0 },
         "labelPosition": { "type": "string", "enum": ["top", "inline", "hidden"] },
@@ -609,6 +713,8 @@
     "FormThemeConfig": {
       "type": "object",
       "properties": {
+        "preset": { "type": "string" },
+        "density": { "type": "string", "enum": ["compact", "comfortable", "spacious"] },
         "mode": { "type": "string", "enum": ["light", "dark", "system"] },
         "seedColor": { "type": "string" },
         "light": { "type": "object" },
@@ -679,6 +785,11 @@
         "storageKey": { "type": "string" },
         "key": { "type": "string" },
         "debounceMs": { "type": "number", "minimum": 0 },
+        "ttlMs": { "type": "number", "minimum": 0 },
+        "conflictResolution": {
+          "type": "string",
+          "enum": ["localWins", "remoteWins", "newestWins", "manual"]
+        },
         "excludeSensitive": { "type": "boolean" },
         "clearOnSubmit": { "type": "boolean" }
       },
