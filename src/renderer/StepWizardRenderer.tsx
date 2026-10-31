@@ -120,7 +120,7 @@ export function StepWizardRenderer({ steps, inline = false }: StepWizardRenderer
                         : formStyles.palette.textSecondary,
                   }}
                 >
-                  {`${idx + 1}. ${resolveLocalizedText(step.title, locale, translations) ?? step.title}`}
+                  {`${idx + 1}. ${resolveLocalizedText(step.title, locale, translations) ?? ''}`}
                 </Text>
               </Button>
             );
@@ -129,8 +129,7 @@ export function StepWizardRenderer({ steps, inline = false }: StepWizardRenderer
 
         {activeStep.description ? (
           <Text textStyle={formStyles.sectionDescriptionStyle}>
-            {resolveLocalizedText(activeStep.description, locale, translations) ??
-              activeStep.description}
+            {resolveLocalizedText(activeStep.description, locale, translations) ?? ''}
           </Text>
         ) : null}
       </Column>
@@ -149,7 +148,7 @@ export function StepWizardRenderer({ steps, inline = false }: StepWizardRenderer
         {!isFirst ? (
           <Button
             variant="outlined"
-            label={activeStep.previousLabel ?? 'Previous'}
+            label={resolveLocalizedText(activeStep.previousLabel, locale, translations) ?? 'Previous'}
             testID="wizard-prev-button"
             onPress={handlePrev}
             style={{ height: 48, borderRadius: 12, paddingHorizontal: 18 }}
@@ -161,7 +160,7 @@ export function StepWizardRenderer({ steps, inline = false }: StepWizardRenderer
         {!isLast ? (
           <Button
             variant="filled"
-            label={activeStep.nextLabel ?? 'Next'}
+            label={resolveLocalizedText(activeStep.nextLabel, locale, translations) ?? 'Next'}
             testID="wizard-next-button"
             onPress={handleNext}
             style={{ height: 48, borderRadius: 12, paddingHorizontal: 22 }}

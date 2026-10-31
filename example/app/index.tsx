@@ -73,20 +73,20 @@ export default function HomeGalleryPage() {
             <Row spacing={10} style={{ width: '100%', paddingTop: 4 }}>
               <Button
                 variant="filled"
-                onPress={() => router.push('/register')}
+                onPress={() => router.push('/custom-builder')}
                 style={{ height: 46, borderRadius: 12, paddingHorizontal: 18 }}
               >
                 <Text textStyle={{ color: '#FFFFFF', fontWeight: '700', fontSize: 14 }}>
-                  Open Register (All 88 Fields)
+                  Build Custom form.json
                 </Text>
               </Button>
               <Button
                 variant="outlined"
-                onPress={() => router.push('/login')}
+                onPress={() => router.push('/register')}
                 style={{ height: 46, borderRadius: 12, paddingHorizontal: 18 }}
               >
                 <Text textStyle={{ color: textPrimary, fontWeight: '600', fontSize: 14 }}>
-                  Open Login Form
+                  Register (All 88 Fields)
                 </Text>
               </Button>
             </Row>

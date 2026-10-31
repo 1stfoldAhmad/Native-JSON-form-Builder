@@ -110,8 +110,8 @@ export function ExpoForm<TValues extends FormValues = FormValues>({
   }, [parsed.issues, onConfigError]);
 
   const effectiveTheme = useMemo(
-    () => rawConfig?.theme ?? globalCfg.theme,
-    [rawConfig?.theme, globalCfg.theme]
+    () => parsed.config?.theme ?? globalCfg.theme,
+    [parsed.config?.theme, globalCfg.theme]
   );
 
   const activeColorScheme: 'light' | 'dark' = useMemo(() => {
@@ -123,9 +123,9 @@ export function ExpoForm<TValues extends FormValues = FormValues>({
   }, [colorSchemeProp, globalCfg.colorScheme, effectiveTheme?.mode, deviceScheme]);
 
   const activeLocale =
-    localeProp ?? rawConfig?.i18n?.locale ?? globalCfg.locale ?? 'en';
+    localeProp ?? parsed.config?.i18n?.locale ?? globalCfg.locale ?? 'en';
 
-  const isRTL = isRTLLocale(activeLocale, rawConfig?.i18n?.direction);
+  const isRTL = isRTLLocale(activeLocale, parsed.config?.i18n?.direction);
 
   const palette = useMemo(
     () => resolvePalette(effectiveTheme, activeColorScheme),

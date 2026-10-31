@@ -14,7 +14,21 @@ export {
   useExpoFormGlobalConfig,
   useHasManagedHost,
 } from './core/context';
-export { parseAndValidateFormConfig } from './core/configParser';
+export {
+  parseAndValidateFormConfig,
+  parseFormJson,
+  validateFormStandard,
+  type ParseFormConfigOptions,
+  type ParsedFormConfigResult,
+} from './core/configParser';
+export {
+  EXPO_FORM_SCHEMA_URI,
+  FormConfigBuilder,
+  createFormBuilder,
+  serializeFormConfig,
+  createStarterFormTemplate,
+  type StarterTemplateKind,
+} from './core/formBuilder';
 
 // Field registry & custom field registration
 export {

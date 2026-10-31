@@ -1,0 +1,688 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://1stfold.dev/schemas/expo-form/v1.json",
+  "title": "ExpoForm Standard Configuration Schema",
+  "description": "Official JSON Schema 2020-12 specification for authoring custom form.json files rendered by native-json-form-builder (<ExpoForm />).",
+  "type": "object",
+  "required": ["id"],
+  "anyOf": [
+    { "required": ["fields"] },
+    { "required": ["sections"] },
+    { "required": ["steps"] }
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema URI for IDE autocomplete and validation (e.g. \"native-json-form-builder/schema/expo-form.schema.json\")."
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier for this form configuration."
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version of this form configuration (e.g. \"1.0.0\")."
+    },
+    "title": {
+      "$ref": "#/$defs/LocalizedText",
+      "description": "Form header title (plain string or locale map such as { \"en\": \"...\", \"ur\": \"...\" })."
+    },
+    "description": {
+      "$ref": "#/$defs/LocalizedText",
+      "description": "Optional subtitle or instructions displayed beneath the form title."
+    },
+    "schema": {
+      "type": "object",
+      "description": "Layer-1 JSON Schema 2020-12 object validated by AJV alongside field-level rules."
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Initial default values keyed by field name or dot-notated path."
+    },
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/FieldConfig" },
+      "description": "Ordered list of form fields."
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/FormSectionConfig" },
+      "description": "Optional grouped or collapsible card sections."
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/FormStepConfig" },
+      "description": "Optional top-level multi-step wizard steps."
+    },
+    "layout": {
+      "$ref": "#/$defs/FormLayoutConfig"
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Form-level visual token overrides (spacing, borderRadius, colors, typography)."
+    },
+    "theme": {
+      "$ref": "#/$defs/FormThemeConfig"
+    },
+    "animations": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "respectReducedMotion": { "type": "boolean" },
+        "preventLayoutJumps": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "scroll": {
+      "$ref": "#/$defs/FormScrollConfig"
+    },
+    "keyboard": {
+      "$ref": "#/$defs/FormKeyboardConfig"
+    },
+    "validation": {
+      "$ref": "#/$defs/FormValidationBehaviorConfig"
+    },
+    "actions": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "object",
+            "required": ["handlerId"],
+            "properties": {
+              "handlerId": { "type": "string" },
+              "params": { "type": "object" }
+            }
+          }
+        ]
+      }
+    },
+    "submit": {
+      "$ref": "#/$defs/FormSubmitConfig"
+    },
+    "accessibility": {
+      "type": "object",
+      "properties": {
+        "announceValidationErrors": { "type": "boolean" },
+        "announceRequiredFields": { "type": "boolean" },
+        "minTouchTargetSize": { "type": "number", "minimum": 24 },
+        "requiredIndicatorText": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "i18n": {
+      "type": "object",
+      "properties": {
+        "locale": { "type": "string" },
+        "direction": { "type": "string", "enum": ["ltr", "rtl", "auto"] },
+        "timezone": { "type": "string" },
+        "currency": { "type": "string" },
+        "translations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "draft": {
+      "$ref": "#/$defs/FormDraftConfig"
+    },
+    "persistence": {
+      "$ref": "#/$defs/FormDraftConfig"
+    },
+    "security": {
+      "type": "object",
+      "properties": {
+        "protectSensitiveFields": { "type": "boolean" },
+        "clearSensitiveOnReset": { "type": "boolean" },
+        "sensitiveFields": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "disabled": { "type": "boolean" },
+    "readOnly": { "type": "boolean" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "LocalizedText": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string" }
+        }
+      ]
+    },
+    "BuiltInFieldType": {
+      "type": "string",
+      "enum": [
+        "text",
+        "firstName",
+        "middleName",
+        "lastName",
+        "fullName",
+        "username",
+        "email",
+        "phone",
+        "emailOrPhone",
+        "password",
+        "confirmPassword",
+        "pin",
+        "otp",
+        "textarea",
+        "search",
+        "masked",
+        "organization",
+        "jobTitle",
+        "website",
+        "url",
+        "number",
+        "integer",
+        "decimal",
+        "currency",
+        "percentage",
+        "age",
+        "quantity",
+        "price",
+        "phoneExtension",
+        "slider",
+        "rangeSlider",
+        "checkbox",
+        "checkboxGroup",
+        "switch",
+        "radioGroup",
+        "select",
+        "searchableSelect",
+        "multiSelect",
+        "searchableMultiSelect",
+        "autocomplete",
+        "chips",
+        "tagInput",
+        "segmentedControl",
+        "rating",
+        "colorPicker",
+        "date",
+        "time",
+        "dateTime",
+        "dateRange",
+        "birthday",
+        "month",
+        "year",
+        "duration",
+        "timezone",
+        "address",
+        "addressLine1",
+        "addressLine2",
+        "country",
+        "state",
+        "city",
+        "postalCode",
+        "coordinates",
+        "locationSearch",
+        "image",
+        "camera",
+        "avatar",
+        "video",
+        "audio",
+        "document",
+        "pdf",
+        "file",
+        "multipleFiles",
+        "multipleImages",
+        "signature",
+        "heading",
+        "description",
+        "staticText",
+        "divider",
+        "section",
+        "fieldGroup",
+        "hidden",
+        "readOnly",
+        "computed",
+        "repeater",
+        "objectGroup",
+        "arrayGroup",
+        "conditionalGroup",
+        "stepGroup"
+      ]
+    },
+    "FieldType": {
+      "anyOf": [
+        { "$ref": "#/$defs/BuiltInFieldType" },
+        { "type": "string", "minLength": 1 }
+      ]
+    },
+    "FieldOption": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "required": ["label", "value"],
+          "properties": {
+            "label": { "type": "string" },
+            "value": { "type": ["string", "number", "boolean"] },
+            "description": { "type": "string" },
+            "icon": { "type": "string" },
+            "flag": { "type": "string" },
+            "group": { "type": "string" },
+            "disabled": { "type": "boolean" },
+            "meta": { "type": "object" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "FieldDataSourceConfig": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "required": ["id"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "dependsOn": { "type": "array", "items": { "type": "string" } },
+            "resetOnDependencyChange": { "type": "boolean" },
+            "debounceMs": { "type": "number", "minimum": 0 },
+            "pageSize": { "type": "integer", "minimum": 1 },
+            "params": { "type": "object" },
+            "emptyMessage": { "type": "string" },
+            "loadingMessage": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ConditionExpression": {
+      "type": "object",
+      "properties": {
+        "field": { "type": "string" },
+        "equals": {},
+        "notEquals": {},
+        "contains": {},
+        "notContains": {},
+        "in": { "type": "array" },
+        "notIn": { "type": "array" },
+        "greaterThan": { "type": ["number", "string"] },
+        "greaterThanOrEqual": { "type": ["number", "string"] },
+        "lessThan": { "type": ["number", "string"] },
+        "lessThanOrEqual": { "type": ["number", "string"] },
+        "matches": {
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "object",
+              "required": ["pattern"],
+              "properties": {
+                "pattern": { "type": "string" },
+                "flags": { "type": "string" }
+              }
+            }
+          ]
+        },
+        "isEmpty": { "type": "boolean" },
+        "isNotEmpty": { "type": "boolean" },
+        "equalsField": { "type": "string" },
+        "notEqualsField": { "type": "string" },
+        "and": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ConditionExpression" }
+        },
+        "or": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ConditionExpression" }
+        },
+        "not": { "$ref": "#/$defs/ConditionExpression" }
+      },
+      "additionalProperties": true
+    },
+    "ComputedFieldFormula": {
+      "type": "object",
+      "required": ["operation"],
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "template",
+            "sum",
+            "subtract",
+            "multiply",
+            "divide",
+            "concat",
+            "ageFromDate",
+            "count",
+            "conditional",
+            "custom"
+          ]
+        },
+        "fields": { "type": "array", "items": { "type": "string" } },
+        "template": { "type": "string" },
+        "separator": { "type": "string" },
+        "precision": { "type": "integer", "minimum": 0 },
+        "when": { "$ref": "#/$defs/ConditionExpression" },
+        "thenValue": {},
+        "elseValue": {},
+        "calculatorId": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "FileUploadConfig": {
+      "type": "object",
+      "properties": {
+        "allowedMimeTypes": { "type": "array", "items": { "type": "string" } },
+        "allowedExtensions": { "type": "array", "items": { "type": "string" } },
+        "maxFileSize": { "type": "integer", "minimum": 1 },
+        "minFileSize": { "type": "integer", "minimum": 0 },
+        "maxFiles": { "type": "integer", "minimum": 1 },
+        "multiple": { "type": "boolean" },
+        "sources": { "type": "array", "items": { "type": "string" } },
+        "imageQuality": { "type": "number", "minimum": 0, "maximum": 1 },
+        "allowsEditing": { "type": "boolean" },
+        "aspect": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "uploadActionId": { "type": "string" },
+        "buttonLabel": { "type": "string" },
+        "cameraButtonLabel": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "FieldValidationConfig": {
+      "type": "object",
+      "properties": {
+        "required": { "type": ["boolean", "string"] },
+        "minLength": { "type": "integer", "minimum": 0 },
+        "maxLength": { "type": "integer", "minimum": 0 },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "minItems": { "type": "integer", "minimum": 0 },
+        "maxItems": { "type": "integer", "minimum": 0 },
+        "minAge": { "type": "integer", "minimum": 0 },
+        "maxAge": { "type": "integer", "minimum": 0 },
+        "equalsField": { "type": "string" },
+        "notEqualsField": { "type": "string" },
+        "greaterThanField": { "type": "string" },
+        "lessThanField": { "type": "string" },
+        "notBeforeField": { "type": "string" },
+        "notAfterField": { "type": "string" },
+        "regex": { "type": ["string", "object", "array"] },
+        "password": { "type": "object" },
+        "phone": { "type": "object" },
+        "asyncValidator": { "type": ["string", "object"] },
+        "messages": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "FieldConfig": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "id": { "type": "string" },
+        "type": { "$ref": "#/$defs/FieldType" },
+        "label": { "$ref": "#/$defs/LocalizedText" },
+        "placeholder": { "$ref": "#/$defs/LocalizedText" },
+        "description": { "$ref": "#/$defs/LocalizedText" },
+        "helperText": { "$ref": "#/$defs/LocalizedText" },
+        "content": { "$ref": "#/$defs/LocalizedText" },
+        "level": { "type": "integer", "minimum": 1, "maximum": 6 },
+        "defaultValue": {},
+        "required": { "type": "boolean" },
+        "disabled": { "type": "boolean" },
+        "readOnly": { "type": "boolean" },
+        "hidden": { "type": "boolean" },
+        "sensitive": { "type": "boolean" },
+        "autoFocus": { "type": "boolean" },
+        "autoCapitalize": { "type": "string" },
+        "autoCorrect": { "type": "boolean" },
+        "autoComplete": { "type": "string" },
+        "keyboardType": { "type": "string" },
+        "returnKeyType": { "type": "string" },
+        "nextField": { "type": "string" },
+        "maxLength": { "type": "integer", "minimum": 0 },
+        "minLength": { "type": "integer", "minimum": 0 },
+        "numberOfLines": { "type": "integer", "minimum": 1 },
+        "selectTextOnFocus": { "type": "boolean" },
+        "prefix": { "type": "string" },
+        "suffix": { "type": "string" },
+        "leadingIcon": { "type": "string" },
+        "trailingIcon": { "type": "string" },
+        "mask": { "type": "string" },
+        "unmaskValue": { "type": "boolean" },
+        "visibilityToggle": { "type": ["boolean", "object"] },
+        "passwordField": { "type": "string" },
+        "showStrengthIndicator": { "type": "boolean" },
+        "defaultCountry": { "type": "string" },
+        "allowedCountries": { "type": "array", "items": { "type": "string" } },
+        "countryField": { "type": "string" },
+        "showCountryPicker": { "type": "boolean" },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "step": { "type": "number" },
+        "precision": { "type": "integer", "minimum": 0 },
+        "currency": { "type": "string" },
+        "currencySymbol": { "type": "string" },
+        "format": { "type": "object" },
+        "showStepper": { "type": "boolean" },
+        "options": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/FieldOption" }
+        },
+        "dataSource": { "$ref": "#/$defs/FieldDataSourceConfig" },
+        "pickerAppearance": { "type": "string" },
+        "searchable": { "type": "boolean" },
+        "searchPlaceholder": { "type": "string" },
+        "clearable": { "type": "boolean" },
+        "selectAll": { "type": "boolean" },
+        "maxSelections": { "type": "integer", "minimum": 1 },
+        "minSelections": { "type": "integer", "minimum": 0 },
+        "groupBy": { "type": "boolean" },
+        "highlightMatches": { "type": "boolean" },
+        "maxRating": { "type": "integer", "minimum": 1 },
+        "allowHalfRating": { "type": "boolean" },
+        "colorPresets": { "type": "array", "items": { "type": "string" } },
+        "supportsOpacity": { "type": "boolean" },
+        "minDate": { "type": "string" },
+        "maxDate": { "type": "string" },
+        "is24Hour": { "type": "boolean" },
+        "dateDisplay": { "type": "string" },
+        "datePresentation": { "type": "string" },
+        "timezone": { "type": "string" },
+        "locale": { "type": "string" },
+        "upload": { "$ref": "#/$defs/FileUploadConfig" },
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/FieldConfig" }
+        },
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/FormStepConfig" }
+        },
+        "collapsible": { "type": "boolean" },
+        "defaultExpanded": { "type": "boolean" },
+        "minItems": { "type": "integer", "minimum": 0 },
+        "maxItems": { "type": "integer", "minimum": 1 },
+        "addButtonLabel": { "type": "string" },
+        "removeButtonLabel": { "type": "string" },
+        "itemLabelTemplate": { "type": "string" },
+        "computed": { "$ref": "#/$defs/ComputedFieldFormula" },
+        "width": { "type": ["number", "string"] },
+        "columns": { "type": "integer", "minimum": 1 },
+        "row": { "type": "string" },
+        "visibleWhen": { "$ref": "#/$defs/ConditionExpression" },
+        "hiddenWhen": { "$ref": "#/$defs/ConditionExpression" },
+        "enabledWhen": { "$ref": "#/$defs/ConditionExpression" },
+        "disabledWhen": { "$ref": "#/$defs/ConditionExpression" },
+        "requiredWhen": { "$ref": "#/$defs/ConditionExpression" },
+        "validation": { "$ref": "#/$defs/FieldValidationConfig" },
+        "style": { "type": "object" },
+        "animations": { "type": ["boolean", "object"] },
+        "accessibility": { "type": "object" },
+        "props": { "type": "object" },
+        "testID": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "FormSectionConfig": {
+      "type": "object",
+      "required": ["id", "fields"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "$ref": "#/$defs/LocalizedText" },
+        "description": { "$ref": "#/$defs/LocalizedText" },
+        "footer": { "$ref": "#/$defs/LocalizedText" },
+        "variant": { "type": "string", "enum": ["default", "card", "fieldGroup"] },
+        "collapsible": { "type": "boolean" },
+        "defaultExpanded": { "type": "boolean" },
+        "fields": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              { "$ref": "#/$defs/FieldConfig" }
+            ]
+          }
+        },
+        "visibleWhen": { "$ref": "#/$defs/ConditionExpression" },
+        "hiddenWhen": { "$ref": "#/$defs/ConditionExpression" }
+      },
+      "additionalProperties": false
+    },
+    "FormStepConfig": {
+      "type": "object",
+      "required": ["id", "title", "fields"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "$ref": "#/$defs/LocalizedText" },
+        "description": { "$ref": "#/$defs/LocalizedText" },
+        "icon": { "type": "string" },
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/FieldConfig" }
+        },
+        "validateBeforeNext": { "type": "boolean" },
+        "visibleWhen": { "$ref": "#/$defs/ConditionExpression" },
+        "nextLabel": { "$ref": "#/$defs/LocalizedText" },
+        "previousLabel": { "$ref": "#/$defs/LocalizedText" }
+      },
+      "additionalProperties": false
+    },
+    "FormLayoutConfig": {
+      "type": "object",
+      "properties": {
+        "direction": { "type": "string", "enum": ["vertical", "horizontal"] },
+        "columns": { "type": "integer", "minimum": 1 },
+        "tabletColumns": { "type": "integer", "minimum": 1 },
+        "tabletBreakpoint": { "type": "number", "minimum": 240 },
+        "rowGap": { "type": "number", "minimum": 0 },
+        "columnGap": { "type": "number", "minimum": 0 },
+        "labelPosition": { "type": "string", "enum": ["top", "inline", "hidden"] },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "FormThemeConfig": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["light", "dark", "system"] },
+        "seedColor": { "type": "string" },
+        "light": { "type": "object" },
+        "dark": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "FormScrollConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "direction": { "type": "string", "enum": ["vertical", "horizontal"] },
+        "keyboardAware": { "type": "boolean" },
+        "scrollToFocusedField": { "type": "boolean" },
+        "dismissKeyboardOnDrag": { "type": "boolean" },
+        "bottomContentInset": { "type": "number", "minimum": 0 },
+        "smoothScroll": { "type": "boolean" },
+        "showsIndicators": { "type": "boolean" },
+        "lazyRendering": { "type": ["boolean", "integer"] }
+      },
+      "additionalProperties": false
+    },
+    "FormKeyboardConfig": {
+      "type": "object",
+      "properties": {
+        "autoAdvanceFocus": { "type": "boolean" },
+        "submitOnLastField": { "type": "boolean" },
+        "defaultReturnKeyType": { "type": "string" },
+        "lastFieldReturnKeyType": { "type": "string" },
+        "dismissOnSubmit": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "FormValidationBehaviorConfig": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["onChange", "onBlur", "onSubmit"] },
+        "reValidateMode": { "type": "string", "enum": ["onChange", "onBlur", "onSubmit"] },
+        "debounceMs": { "type": "number", "minimum": 0 },
+        "scrollToFirstError": { "type": "boolean" },
+        "focusFirstError": { "type": "boolean" },
+        "showErrorSummary": { "type": "boolean" },
+        "crossFieldRules": { "type": "array", "items": { "type": "object" } }
+      },
+      "additionalProperties": true
+    },
+    "FormSubmitConfig": {
+      "type": "object",
+      "properties": {
+        "label": { "$ref": "#/$defs/LocalizedText" },
+        "loadingLabel": { "$ref": "#/$defs/LocalizedText" },
+        "successLabel": { "$ref": "#/$defs/LocalizedText" },
+        "hidden": { "type": "boolean" },
+        "disableUntilDirty": { "type": "boolean" },
+        "disableWhenInvalid": { "type": "boolean" },
+        "preventDuplicateSubmit": { "type": "boolean" },
+        "showReset": { "type": "boolean" },
+        "resetLabel": { "$ref": "#/$defs/LocalizedText" },
+        "actionId": { "type": "string" },
+        "variant": { "type": "string", "enum": ["filled", "outlined", "text"] }
+      },
+      "additionalProperties": false
+    },
+    "FormDraftConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "storageKey": { "type": "string" },
+        "key": { "type": "string" },
+        "debounceMs": { "type": "number", "minimum": 0 },
+        "excludeSensitive": { "type": "boolean" },
+        "clearOnSubmit": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

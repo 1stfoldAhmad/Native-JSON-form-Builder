@@ -190,6 +190,8 @@ export interface FormActionReference {
  * Complete single-file JSON Form Configuration Contract (Section 7).
  */
 export interface FormConfig {
+  /** Optional JSON Schema URI for IDE validation & autocomplete (e.g. "native-json-form-builder/schema/expo-form.schema.json"). */
+  $schema?: string;
   /** Unique form identifier. */
   id: string;
   /** Configuration schema version (e.g. '1.0' or '1.0.0'). */

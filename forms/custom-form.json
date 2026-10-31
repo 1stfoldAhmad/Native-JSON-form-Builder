@@ -1,0 +1,137 @@
+{
+  "$schema": "../schema/expo-form.schema.json",
+  "id": "custom-user-form",
+  "version": "1.0.0",
+  "title": {
+    "en": "Custom Starter Form",
+    "ur": "کسٹم فارم ٹیمپلیٹ"
+  },
+  "description": "Starter custom form.json adhering to the official ExpoForm standard. Edit or copy this file to generate any native form.",
+  "defaults": {
+    "contactChannel": "email",
+    "country": "PK",
+    "subscribeUpdates": true,
+    "urgency": 3
+  },
+  "sections": [
+    {
+      "id": "basic-details",
+      "title": "1. Contact Details",
+      "variant": "card",
+      "collapsible": true,
+      "defaultExpanded": true,
+      "fields": [
+        {
+          "name": "firstName",
+          "type": "firstName",
+          "row": "nameRow",
+          "label": "First Name",
+          "placeholder": "Ahmad",
+          "required": true,
+          "validation": { "minLength": 2 }
+        },
+        {
+          "name": "lastName",
+          "type": "lastName",
+          "row": "nameRow",
+          "label": "Last Name",
+          "placeholder": "Khan",
+          "required": true,
+          "validation": { "minLength": 2 }
+        },
+        {
+          "name": "fullNamePreview",
+          "type": "computed",
+          "label": "Computed Full Name",
+          "computed": {
+            "operation": "concat",
+            "fields": ["firstName", "lastName"],
+            "separator": " "
+          }
+        },
+        {
+          "name": "contactChannel",
+          "type": "segmentedControl",
+          "label": "Preferred Contact Method",
+          "required": true,
+          "options": [
+            { "label": "Email", "value": "email" },
+            { "label": "Mobile Phone", "value": "phone" }
+          ]
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "label": "Email Address",
+          "placeholder": "you@company.com",
+          "visibleWhen": { "field": "contactChannel", "equals": "email" },
+          "requiredWhen": { "field": "contactChannel", "equals": "email" }
+        },
+        {
+          "name": "country",
+          "type": "country",
+          "label": "Country",
+          "visibleWhen": { "field": "contactChannel", "equals": "phone" }
+        },
+        {
+          "name": "phone",
+          "type": "phone",
+          "label": "Mobile Phone",
+          "countryField": "country",
+          "visibleWhen": { "field": "contactChannel", "equals": "phone" },
+          "requiredWhen": { "field": "contactChannel", "equals": "phone" }
+        }
+      ]
+    },
+    {
+      "id": "preferences",
+      "title": "2. Request & Preferences",
+      "variant": "card",
+      "collapsible": true,
+      "defaultExpanded": true,
+      "fields": [
+        {
+          "name": "topic",
+          "type": "select",
+          "label": "Inquiry Topic",
+          "required": true,
+          "options": [
+            { "label": "Product Demo", "value": "demo" },
+            { "label": "Enterprise Licensing", "value": "enterprise" },
+            { "label": "Technical Integration", "value": "integration" }
+          ]
+        },
+        {
+          "name": "urgency",
+          "type": "rating",
+          "label": "Priority Level (1–5)",
+          "maxRating": 5
+        },
+        {
+          "name": "notes",
+          "type": "textarea",
+          "label": "Additional Details",
+          "placeholder": "Tell us what you are building...",
+          "numberOfLines": 4
+        },
+        {
+          "name": "subscribeUpdates",
+          "type": "switch",
+          "label": "Receive release updates and schema tips"
+        }
+      ]
+    }
+  ],
+  "validation": {
+    "mode": "onBlur",
+    "scrollToFirstError": true
+  },
+  "submit": {
+    "label": {
+      "en": "Submit Custom Form",
+      "ur": "فارم جمع کرائیں"
+    },
+    "showReset": true,
+    "resetLabel": "Reset"
+  }
+}

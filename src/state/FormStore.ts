@@ -258,6 +258,7 @@ export class FormStore {
       }
     }
     if (options.config && options.config !== this.config) {
+      const prevId = this.config.id;
       this.config = options.config;
       this.validationEngine.updateConfig(options.config);
       this.sensitivePaths = collectSensitiveFieldPaths(
@@ -265,6 +266,41 @@ export class FormStore {
         this.config.security
       );
       this.indexFieldsAndDependencies();
+
+      if (options.config.id !== prevId) {
+        const seeded = buildInitialFormValues(this.config, options.initialValues);
+        this.values = seeded;
+        this.errors = {};
+        this.formErrors = [];
+        this.dirtyFields = {};
+        this.touchedFields = {};
+        this.validatingFields = {};
+        this.filesByField = {};
+        this.currentStepIndex = 0;
+        this.recomputeAllComputedFields(false);
+        this.initialValues = deepClone(this.values);
+        for (const key of this.allFieldsMap.keys()) {
+          this.externalValueVersion[key] = (this.externalValueVersion[key] ?? 0) + 1;
+        }
+      } else {
+        // Same form ID (e.g. live custom form.json editing): seed defaults for newly added fields
+        const seeded = buildInitialFormValues(this.config);
+        for (const fieldPath of this.allFieldsMap.keys()) {
+          if (getByPath(this.values, fieldPath) === undefined) {
+            const nextDefault = getByPath(seeded, fieldPath);
+            if (nextDefault !== undefined) {
+              this.values = setByPath(this.values, fieldPath, nextDefault);
+              this.externalValueVersion[fieldPath] =
+                (this.externalValueVersion[fieldPath] ?? 0) + 1;
+            }
+          }
+        }
+        const maxStep = Math.max(0, (this.config.steps?.length ?? 1) - 1);
+        if (this.currentStepIndex > maxStep) {
+          this.currentStepIndex = maxStep;
+        }
+        this.recomputeAllComputedFields(false);
+      }
       shouldNotifyGlobal = true;
     }
 
