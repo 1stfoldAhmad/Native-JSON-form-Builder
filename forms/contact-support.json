@@ -1,0 +1,145 @@
+{
+  "id": "contact-support-ticket",
+  "version": "1.0.0",
+  "title": {
+    "en": "Contact & Support Ticket",
+    "ur": "رابطہ اور سپورٹ ٹکٹ"
+  },
+  "description": "Report bugs, request enterprise demos, or open billing tickets with attachments and optional callback scheduling.",
+  "defaults": {
+    "category": "technical",
+    "priority": "medium",
+    "affectedPlatforms": ["ios", "android"],
+    "requestCallback": false,
+    "timezone": "Asia/Karachi"
+  },
+  "fields": [
+    {
+      "name": "fullName",
+      "type": "fullName",
+      "row": "supContactRow",
+      "label": "Your Name",
+      "placeholder": "Ahmad Khan",
+      "required": true
+    },
+    {
+      "name": "email",
+      "type": "email",
+      "row": "supContactRow",
+      "label": "Work Email",
+      "placeholder": "ahmad@company.com",
+      "required": true
+    },
+    {
+      "name": "category",
+      "type": "select",
+      "label": "Inquiry Category",
+      "required": true,
+      "options": [
+        { "label": "Technical Issue / Bug Report", "value": "technical" },
+        { "label": "Billing & Subscription", "value": "billing" },
+        { "label": "Enterprise Licensing & Security", "value": "enterprise" },
+        { "label": "Feature Request", "value": "feature" }
+      ]
+    },
+    {
+      "name": "priority",
+      "type": "chips",
+      "label": "Severity / Priority",
+      "options": [
+        { "label": "Low", "value": "low" },
+        { "label": "Medium", "value": "medium" },
+        { "label": "High", "value": "high" },
+        { "label": "Critical Outage", "value": "critical" }
+      ]
+    },
+    {
+      "name": "affectedPlatforms",
+      "type": "checkboxGroup",
+      "label": "Affected Platforms",
+      "visibleWhen": {
+        "field": "category",
+        "equals": "technical"
+      },
+      "options": [
+        { "label": "iOS (SwiftUI)", "value": "ios" },
+        { "label": "Android (Jetpack Compose)", "value": "android" },
+        { "label": "Expo Web", "value": "web" }
+      ]
+    },
+    {
+      "name": "subject",
+      "type": "text",
+      "label": "Subject",
+      "placeholder": "Brief summary of your request",
+      "required": true,
+      "validation": {
+        "minLength": 5
+      }
+    },
+    {
+      "name": "description",
+      "type": "textarea",
+      "label": "Detailed Description",
+      "placeholder": "Include steps to reproduce, expected behavior, and SDK version...",
+      "numberOfLines": 5,
+      "required": true,
+      "validation": {
+        "minLength": 15
+      }
+    },
+    {
+      "name": "screenshots",
+      "type": "multipleImages",
+      "label": "Screenshots (Optional)",
+      "upload": {
+        "maxFiles": 4,
+        "maxFileSize": 8388608
+      }
+    },
+    {
+      "name": "requestCallback",
+      "type": "switch",
+      "label": "Schedule a phone callback from a support engineer"
+    },
+    {
+      "id": "callbackGroup",
+      "type": "conditionalGroup",
+      "visibleWhen": {
+        "field": "requestCallback",
+        "equals": true
+      },
+      "fields": [
+        {
+          "name": "callbackPhone",
+          "type": "phone",
+          "label": "Callback Phone Number",
+          "defaultCountry": "PK",
+          "requiredWhen": {
+            "field": "requestCallback",
+            "equals": true
+          }
+        },
+        {
+          "name": "callbackDateTime",
+          "type": "dateTime",
+          "row": "cbSlotRow",
+          "label": "Preferred Date & Time",
+          "placeholder": "2026-11-05T15:00"
+        },
+        {
+          "name": "timezone",
+          "type": "timezone",
+          "row": "cbSlotRow",
+          "label": "Your Timezone"
+        }
+      ]
+    }
+  ],
+  "submit": {
+    "label": "Submit Support Ticket",
+    "loadingLabel": "Opening Ticket...",
+    "successLabel": "Ticket Created!",
+    "showReset": true
+  }
+}

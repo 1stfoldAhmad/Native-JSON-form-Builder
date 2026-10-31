@@ -1,0 +1,206 @@
+{
+  "id": "user-login",
+  "version": "1.0.0",
+  "title": {
+    "en": "Welcome Back",
+    "ur": "خوش آمدید — سائن ان کریں"
+  },
+  "description": {
+    "en": "Sign in using Email & Password, Mobile OTP, or Quick Username + PIN.",
+    "ur": "اپنے ای میل اور پاس ورڈ، موبائل او ٹی پی، یا پن کوڈ کے ذریعے لاگ ان کریں۔"
+  },
+  "defaults": {
+    "loginMethod": "password",
+    "country": "PK",
+    "rememberDevice": true,
+    "useAuthenticator2FA": false
+  },
+  "fields": [
+    {
+      "name": "loginMethod",
+      "type": "segmentedControl",
+      "label": {
+        "en": "Sign-In Method",
+        "ur": "لاگ ان کا طریقہ"
+      },
+      "options": [
+        { "label": "Password", "value": "password" },
+        { "label": "Phone OTP", "value": "otp" },
+        { "label": "Quick PIN", "value": "pin" }
+      ],
+      "required": true
+    },
+    {
+      "name": "identifier",
+      "type": "emailOrPhone",
+      "label": {
+        "en": "Email Address or Phone Number",
+        "ur": "ای میل یا فون نمبر"
+      },
+      "placeholder": "ahmad@1stfold.com or +92 300 1234567",
+      "leadingIcon": "user",
+      "visibleWhen": {
+        "field": "loginMethod",
+        "equals": "password"
+      },
+      "requiredWhen": {
+        "field": "loginMethod",
+        "equals": "password"
+      }
+    },
+    {
+      "name": "password",
+      "type": "password",
+      "label": {
+        "en": "Password",
+        "ur": "پاس ورڈ"
+      },
+      "placeholder": "Enter your account password",
+      "leadingIcon": "lock",
+      "visibilityToggle": {
+        "showIcon": "eye",
+        "hideIcon": "eye-off",
+        "showLabel": "Show password",
+        "hideLabel": "Hide password"
+      },
+      "visibleWhen": {
+        "field": "loginMethod",
+        "equals": "password"
+      },
+      "requiredWhen": {
+        "field": "loginMethod",
+        "equals": "password"
+      },
+      "validation": {
+        "minLength": 6
+      }
+    },
+    {
+      "name": "phone",
+      "type": "phone",
+      "label": {
+        "en": "Registered Mobile Number",
+        "ur": "رجسٹرڈ موبائل نمبر"
+      },
+      "defaultCountry": "PK",
+      "visibleWhen": {
+        "field": "loginMethod",
+        "equals": "otp"
+      },
+      "requiredWhen": {
+        "field": "loginMethod",
+        "equals": "otp"
+      }
+    },
+    {
+      "name": "smsOtp",
+      "type": "otp",
+      "label": {
+        "en": "6-Digit SMS Verification Code",
+        "ur": "6 ہندسوں کا تصدیقی کوڈ"
+      },
+      "placeholder": "123456",
+      "maxLength": 6,
+      "visibleWhen": {
+        "field": "loginMethod",
+        "equals": "otp"
+      },
+      "requiredWhen": {
+        "field": "loginMethod",
+        "equals": "otp"
+      },
+      "validation": {
+        "regex": {
+          "pattern": "^\\d{6}$",
+          "message": "Enter the 6-digit SMS verification code"
+        }
+      }
+    },
+    {
+      "name": "username",
+      "type": "username",
+      "label": "Username",
+      "placeholder": "ahmad.khan",
+      "visibleWhen": {
+        "field": "loginMethod",
+        "equals": "pin"
+      },
+      "requiredWhen": {
+        "field": "loginMethod",
+        "equals": "pin"
+      }
+    },
+    {
+      "name": "quickPin",
+      "type": "pin",
+      "label": "4-Digit Security PIN",
+      "placeholder": "••••",
+      "maxLength": 4,
+      "visibleWhen": {
+        "field": "loginMethod",
+        "equals": "pin"
+      },
+      "requiredWhen": {
+        "field": "loginMethod",
+        "equals": "pin"
+      },
+      "validation": {
+        "regex": {
+          "pattern": "^\\d{4}$",
+          "message": "Enter your 4-digit numeric PIN"
+        }
+      }
+    },
+    {
+      "name": "useAuthenticator2FA",
+      "type": "checkbox",
+      "label": "I have an Authenticator 2FA code",
+      "visibleWhen": {
+        "field": "loginMethod",
+        "equals": "password"
+      }
+    },
+    {
+      "name": "totpCode",
+      "type": "otp",
+      "label": "Authenticator TOTP Code",
+      "placeholder": "000000",
+      "maxLength": 6,
+      "visibleWhen": {
+        "and": [
+          { "field": "loginMethod", "equals": "password" },
+          { "field": "useAuthenticator2FA", "equals": true }
+        ]
+      },
+      "requiredWhen": {
+        "and": [
+          { "field": "loginMethod", "equals": "password" },
+          { "field": "useAuthenticator2FA", "equals": true }
+        ]
+      }
+    },
+    {
+      "name": "rememberDevice",
+      "type": "switch",
+      "label": {
+        "en": "Keep me signed in on this device for 30 days",
+        "ur": "اس ڈیوائس پر 30 دن تک سائن ان رکھیں"
+      }
+    }
+  ],
+  "submit": {
+    "label": {
+      "en": "Sign In",
+      "ur": "سائن ان کریں"
+    },
+    "loadingLabel": "Signing In...",
+    "successLabel": "Signed In!",
+    "showReset": true,
+    "resetLabel": "Clear"
+  },
+  "security": {
+    "protectSensitiveFields": true,
+    "clearSensitiveOnReset": true,
+    "sensitiveFields": ["password", "smsOtp", "quickPin", "totpCode"]
+  }
+}

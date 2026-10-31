@@ -1,13 +1,13 @@
 {
   "id": "user-registration",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "title": {
     "en": "Create Your Account",
     "ur": "اپنا اکاؤنٹ بنائیں"
   },
   "description": {
-    "en": "Complete the registration form below. Fields adapt automatically to your account type and country.",
-    "ur": "اپنی تفصیلات درج کریں۔ فارم آپ کے ملک اور اکاؤنٹ کی قسم کے مطابق خودکار طور پر ڈھل جائے گا۔"
+    "en": "Complete registration form showcasing all 88 native field types across 7 categories — personal identity, location, dates, finance, selections, uploads, and structural groups.",
+    "ur": "اپنی تفصیلات درج کریں۔ فارم تمام 88 فیلڈ اقسام کو سپورٹ کرتا ہے اور آپ کے ملک اور اکاؤنٹ کی قسم کے مطابق خودکار طور پر ڈھل جاتا ہے۔"
   },
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -110,320 +110,1022 @@
     }
   },
   "defaults": {
+    "registrationChannel": "mobile-expo-router",
+    "membershipCode": "TIER-PRO-2026",
     "accountType": "personal",
     "country": "PK",
-    "marketingOptIn": false,
+    "preferredTimezone": "Asia/Karachi",
+    "preferredPlan": "pro",
+    "workspaceSeats": 3,
+    "consultingHourlyRate": 75,
+    "monthlySpendLimit": 1500,
+    "salaryExpectationRange": [60000, 140000],
+    "onboardingExperienceRating": 5,
+    "avatarBadgeColor": "#2563EB",
+    "focusSessionDuration": "01:30",
+    "spokenLanguages": ["en", "ur"],
+    "technicalSkills": ["typescript", "expo"],
+    "profileTags": ["early-adopter", "mobile"],
+    "professionalCertifications": ["AWS Certified Developer"],
+    "employmentHistory": [
+      {
+        "company": "1stFold",
+        "role": "Senior Mobile Engineer"
+      }
+    ],
+    "marketingOptIn": true,
     "acceptTerms": false
   },
-  "fields": [
+  "sections": [
     {
-      "name": "accountType",
-      "type": "segmentedControl",
-      "label": {
-        "en": "Account Type",
-        "ur": "اکاؤنٹ کی قسم"
+      "id": "cat-a-core-identity",
+      "title": {
+        "en": "1. Core Account, Personal Identity & Credentials",
+        "ur": "1. بنیادی اکاؤنٹ اور ذاتی شناخت"
       },
-      "options": [
-        { "label": "Personal", "value": "personal" },
-        { "label": "Business", "value": "business" }
-      ],
-      "required": true
-    },
-    {
-      "name": "firstName",
-      "type": "firstName",
-      "row": "nameRow",
-      "label": {
-        "en": "First Name",
-        "ur": "پہلا نام"
-      },
-      "placeholder": {
-        "en": "Ahmad",
-        "ur": "احمد"
-      },
-      "required": true
-    },
-    {
-      "name": "lastName",
-      "type": "lastName",
-      "row": "nameRow",
-      "label": {
-        "en": "Last Name",
-        "ur": "خاندانی نام"
-      },
-      "placeholder": {
-        "en": "Khan",
-        "ur": "خان"
-      },
-      "required": true
-    },
-    {
-      "name": "fullNamePreview",
-      "type": "computed",
-      "label": {
-        "en": "Display Name (Auto-computed)",
-        "ur": "مکمل نام"
-      },
-      "computed": {
-        "operation": "concat",
-        "fields": ["firstName", "lastName"],
-        "separator": " "
-      },
-      "visibleWhen": {
-        "field": "firstName",
-        "isNotEmpty": true
-      }
-    },
-    {
-      "name": "organization",
-      "type": "organization",
-      "label": {
-        "en": "Organization Name",
-        "ur": "ادارے کا نام"
-      },
-      "placeholder": "Acme Technologies Pvt. Ltd.",
-      "visibleWhen": {
-        "field": "accountType",
-        "equals": "business"
-      },
-      "requiredWhen": {
-        "field": "accountType",
-        "equals": "business"
-      },
-      "validation": {
-        "regex": {
-          "pattern": "^[A-Za-z0-9&.,'\\-\\s]{2,100}$",
-          "message": "Organization name contains unsupported characters"
-        }
-      }
-    },
-    {
-      "name": "jobTitle",
-      "type": "jobTitle",
-      "row": "bizRow",
-      "label": "Job Title",
-      "placeholder": "Engineering Lead",
-      "visibleWhen": {
-        "field": "accountType",
-        "equals": "business"
-      }
-    },
-    {
-      "name": "website",
-      "type": "website",
-      "row": "bizRow",
-      "label": "Company Website",
-      "placeholder": "https://company.com",
-      "visibleWhen": {
-        "field": "accountType",
-        "equals": "business"
-      }
-    },
-    {
-      "name": "username",
-      "type": "username",
-      "label": {
-        "en": "Username",
-        "ur": "یوزر نیم"
-      },
-      "placeholder": "ahmad.khan",
-      "helperText": "3–24 characters: letters, numbers, dots, underscores, or hyphens.",
-      "required": true,
-      "validation": {
-        "regex": {
-          "pattern": "^[a-zA-Z0-9_.-]{3,24}$",
-          "message": "Username may only contain letters, numbers, dots, underscores, and hyphens"
+      "description": "Covers all 20 Text & Personal field types plus conditional business group, computed preview, password visibility toggle, and strength meter.",
+      "variant": "card",
+      "collapsible": true,
+      "defaultExpanded": true,
+      "fields": [
+        {
+          "id": "welcomeHeading",
+          "type": "heading",
+          "level": 3,
+          "content": {
+            "en": "Account Setup & Verification",
+            "ur": "اکاؤنٹ سیٹ اپ اور تصدیق"
+          }
         },
-        "async": {
-          "validatorId": "checkUsernameAvailable",
-          "debounceMs": 350,
-          "trigger": "onBlur",
-          "message": "This username is already taken"
+        {
+          "id": "privacyNoticeDescription",
+          "type": "description",
+          "content": "Required fields are marked with *. Switch Account Type to Business to reveal organization fields."
+        },
+        {
+          "name": "registrationChannel",
+          "type": "hidden"
+        },
+        {
+          "name": "membershipCode",
+          "type": "readOnly",
+          "label": "Assigned Membership Code"
+        },
+        {
+          "name": "accountType",
+          "type": "segmentedControl",
+          "label": {
+            "en": "Account Type",
+            "ur": "اکاؤنٹ کی قسم"
+          },
+          "options": [
+            { "label": "Personal", "value": "personal" },
+            { "label": "Business", "value": "business" }
+          ],
+          "required": true
+        },
+        {
+          "name": "firstName",
+          "type": "firstName",
+          "row": "nameRow",
+          "label": {
+            "en": "First Name",
+            "ur": "پہلا نام"
+          },
+          "placeholder": {
+            "en": "Ahmad",
+            "ur": "احمد"
+          },
+          "required": true
+        },
+        {
+          "name": "middleName",
+          "type": "middleName",
+          "row": "nameRow",
+          "label": "Middle Name",
+          "placeholder": "Ali"
+        },
+        {
+          "name": "lastName",
+          "type": "lastName",
+          "label": {
+            "en": "Last Name",
+            "ur": "خاندانی نام"
+          },
+          "placeholder": {
+            "en": "Khan",
+            "ur": "خان"
+          },
+          "required": true
+        },
+        {
+          "name": "legalFullName",
+          "type": "fullName",
+          "row": "aliasRow",
+          "label": "Legal Full Name (As on ID)",
+          "placeholder": "Ahmad Ali Khan"
+        },
+        {
+          "name": "nickname",
+          "type": "text",
+          "row": "aliasRow",
+          "label": "Preferred Display Nickname",
+          "placeholder": "Ahmad K."
+        },
+        {
+          "name": "fullNamePreview",
+          "type": "computed",
+          "label": {
+            "en": "Display Name (Auto-computed)",
+            "ur": "مکمل نام"
+          },
+          "computed": {
+            "operation": "concat",
+            "fields": ["firstName", "lastName"],
+            "separator": " "
+          },
+          "visibleWhen": {
+            "field": "firstName",
+            "isNotEmpty": true
+          }
+        },
+        {
+          "id": "businessDetailsGroup",
+          "type": "conditionalGroup",
+          "visibleWhen": {
+            "field": "accountType",
+            "equals": "business"
+          },
+          "fields": [
+            {
+              "name": "organization",
+              "type": "organization",
+              "label": {
+                "en": "Organization Name",
+                "ur": "ادارے کا نام"
+              },
+              "placeholder": "Acme Technologies Pvt. Ltd.",
+              "requiredWhen": {
+                "field": "accountType",
+                "equals": "business"
+              },
+              "validation": {
+                "regex": {
+                  "pattern": "^[A-Za-z0-9&.,'\\-\\s]{2,100}$",
+                  "message": "Organization name contains unsupported characters"
+                }
+              }
+            },
+            {
+              "name": "jobTitle",
+              "type": "jobTitle",
+              "row": "bizRow",
+              "label": "Job Title",
+              "placeholder": "Engineering Lead"
+            },
+            {
+              "name": "website",
+              "type": "website",
+              "row": "bizRow",
+              "label": "Company Website",
+              "placeholder": "https://company.com"
+            }
+          ]
+        },
+        {
+          "name": "username",
+          "type": "username",
+          "row": "handleRow",
+          "label": {
+            "en": "Username",
+            "ur": "یوزر نیم"
+          },
+          "placeholder": "ahmad.khan",
+          "helperText": "3–24 chars: letters, numbers, dots, underscores, hyphens.",
+          "required": true,
+          "validation": {
+            "regex": {
+              "pattern": "^[a-zA-Z0-9_.-]{3,24}$",
+              "message": "Username may only contain letters, numbers, dots, underscores, and hyphens"
+            },
+            "async": {
+              "validatorId": "checkUsernameAvailable",
+              "debounceMs": 350,
+              "trigger": "onBlur",
+              "message": "This username is already taken"
+            }
+          }
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "row": "handleRow",
+          "label": {
+            "en": "Email Address",
+            "ur": "ای میل ایڈریس"
+          },
+          "placeholder": "ahmad@example.com",
+          "leadingIcon": "mail",
+          "required": true,
+          "validation": {
+            "format": "email",
+            "async": {
+              "validatorId": "checkEmailAvailable",
+              "debounceMs": 350,
+              "trigger": "onBlur",
+              "message": "An account with this email already exists"
+            }
+          }
+        },
+        {
+          "name": "recoveryContact",
+          "type": "emailOrPhone",
+          "label": "Backup Recovery Email or Phone",
+          "placeholder": "recovery@example.com or +923211234567"
+        },
+        {
+          "name": "linkedinUrl",
+          "type": "url",
+          "row": "socialSearchRow",
+          "label": "LinkedIn or GitHub Profile URL",
+          "placeholder": "https://github.com/username"
+        },
+        {
+          "name": "mentorSearch",
+          "type": "search",
+          "row": "socialSearchRow",
+          "label": "Referral / Community Lookup",
+          "placeholder": "Search referrer handle...",
+          "clearable": true
+        },
+        {
+          "name": "bio",
+          "type": "textarea",
+          "label": "Short Bio / About You",
+          "placeholder": "Tell us about what you are building...",
+          "numberOfLines": 3
+        },
+        {
+          "id": "coreSectionDivider",
+          "type": "divider"
+        },
+        {
+          "name": "password",
+          "type": "password",
+          "label": {
+            "en": "Password",
+            "ur": "پاس ورڈ"
+          },
+          "placeholder": "Minimum 8 characters",
+          "required": true,
+          "showStrengthIndicator": true,
+          "visibilityToggle": {
+            "showIcon": "eye",
+            "hideIcon": "eye-off",
+            "showLabel": "Show password",
+            "hideLabel": "Hide password"
+          },
+          "validation": {
+            "password": {
+              "minLength": 8,
+              "requireUppercase": true,
+              "requireLowercase": true,
+              "requireNumber": true,
+              "requireSpecialChar": true,
+              "disallowSpaces": true
+            }
+          }
+        },
+        {
+          "name": "confirmPassword",
+          "type": "confirmPassword",
+          "label": {
+            "en": "Confirm Password",
+            "ur": "پاس ورڈ کی تصدیق کریں"
+          },
+          "placeholder": "Re-enter your password",
+          "passwordField": "password",
+          "required": true,
+          "visibilityToggle": {
+            "showIcon": "eye",
+            "hideIcon": "eye-off"
+          },
+          "validation": {
+            "equalsField": "password",
+            "messages": {
+              "equalsField": "Confirm password must match password"
+            }
+          }
+        },
+        {
+          "name": "securityPin",
+          "type": "pin",
+          "row": "pinOtpRow",
+          "label": "4-Digit App Lock PIN (Optional)",
+          "placeholder": "••••",
+          "maxLength": 4
+        },
+        {
+          "name": "referralOtp",
+          "type": "otp",
+          "row": "pinOtpRow",
+          "label": "Invite / OTP Code (Optional)",
+          "placeholder": "6-digit code",
+          "maxLength": 6
         }
-      }
+      ]
     },
     {
-      "name": "email",
-      "type": "email",
-      "label": {
-        "en": "Email Address",
-        "ur": "ای میل ایڈریس"
+      "id": "cat-e-address-location",
+      "title": {
+        "en": "2. Country, Phone, CNIC & Location",
+        "ur": "2. ملک، فون اور پتہ"
       },
-      "placeholder": "ahmad@example.com",
-      "leadingIcon": "mail",
-      "required": true,
-      "validation": {
-        "format": "email",
-        "async": {
-          "validatorId": "checkEmailAvailable",
-          "debounceMs": 350,
-          "trigger": "onBlur",
-          "message": "An account with this email already exists"
-        }
-      }
-    },
-    {
-      "name": "country",
-      "type": "country",
-      "label": {
-        "en": "Country",
-        "ur": "ملک"
-      },
-      "placeholder": "Select country",
-      "searchPlaceholder": "Search countries...",
-      "required": true
-    },
-    {
-      "name": "state",
-      "type": "state",
-      "row": "regionRow",
-      "label": "State / Province",
-      "countryField": "country",
-      "visibleWhen": {
-        "field": "country",
-        "in": ["PK", "US", "GB", "AE", "CA"]
-      }
-    },
-    {
-      "name": "city",
-      "type": "city",
-      "row": "regionRow",
-      "label": "City",
-      "visibleWhen": {
-        "field": "state",
-        "isNotEmpty": true
-      }
-    },
-    {
-      "name": "phone",
-      "type": "phone",
-      "label": {
-        "en": "Phone Number",
-        "ur": "فون نمبر"
-      },
-      "countryField": "country",
-      "required": true,
-      "validation": {
-        "phone": {
+      "description": "Covers all 9 Address & Location field types plus country-linked phone & Pakistani CNIC mask.",
+      "variant": "card",
+      "collapsible": true,
+      "defaultExpanded": true,
+      "fields": [
+        {
+          "name": "country",
+          "type": "country",
+          "label": {
+            "en": "Country",
+            "ur": "ملک"
+          },
+          "placeholder": "Select country",
+          "searchPlaceholder": "Search countries...",
+          "required": true
+        },
+        {
+          "name": "state",
+          "type": "state",
+          "row": "regionRow",
+          "label": "State / Province",
           "countryField": "country",
-          "message": "Please enter a valid phone number for the selected country"
+          "visibleWhen": {
+            "field": "country",
+            "in": ["PK", "US", "GB", "AE", "CA"]
+          }
+        },
+        {
+          "name": "city",
+          "type": "city",
+          "row": "regionRow",
+          "label": "City",
+          "visibleWhen": {
+            "field": "state",
+            "isNotEmpty": true
+          }
+        },
+        {
+          "name": "phone",
+          "type": "phone",
+          "row": "phoneExtRow",
+          "label": {
+            "en": "Phone Number",
+            "ur": "فون نمبر"
+          },
+          "countryField": "country",
+          "required": true,
+          "validation": {
+            "phone": {
+              "countryField": "country",
+              "message": "Please enter a valid phone number for the selected country"
+            }
+          }
+        },
+        {
+          "name": "officeExtension",
+          "type": "phoneExtension",
+          "row": "phoneExtRow",
+          "label": "Office Ext.",
+          "placeholder": "402"
+        },
+        {
+          "name": "cnic",
+          "type": "masked",
+          "label": {
+            "en": "CNIC Number",
+            "ur": "قومی شناختی کارڈ نمبر"
+          },
+          "placeholder": "35202-1234567-1",
+          "mask": "#####-#######-#",
+          "visibleWhen": {
+            "field": "country",
+            "equals": "PK"
+          },
+          "validation": {
+            "cnic": {
+              "allowUnformatted": false,
+              "message": "Enter a valid 13-digit CNIC in format 35202-1234567-1"
+            }
+          }
+        },
+        {
+          "name": "addressLine1",
+          "type": "addressLine1",
+          "label": "Street Address Line 1",
+          "placeholder": "House 14, Street 8, F-7/3"
+        },
+        {
+          "name": "addressLine2",
+          "type": "addressLine2",
+          "row": "addr2PostalRow",
+          "label": "Apartment / Suite (Line 2)",
+          "placeholder": "Floor 2"
+        },
+        {
+          "name": "postalCode",
+          "type": "postalCode",
+          "row": "addr2PostalRow",
+          "label": "Postal / ZIP Code",
+          "countryField": "country",
+          "placeholder": "44000"
+        },
+        {
+          "name": "secondaryAddress",
+          "type": "address",
+          "label": "Complete Billing / Mailing Address",
+          "placeholder": "Full street, area, city, and postal code"
+        },
+        {
+          "name": "nearestHubSearch",
+          "type": "locationSearch",
+          "label": "Nearest Co-Working Hub Search",
+          "placeholder": "Search city or landmark...",
+          "options": [
+            { "label": "Islamabad Blue Area Hub", "value": "isb-blue-area" },
+            { "label": "Rawalpindi Saddar Tech Park", "value": "rwp-saddar" },
+            { "label": "Lahore Gulberg Innovation Center", "value": "lhr-gulberg" },
+            { "label": "Karachi Clifton Harbour Tower", "value": "khi-clifton" }
+          ]
+        },
+        {
+          "name": "homeOfficeCoordinates",
+          "type": "coordinates",
+          "label": "Pin Coordinates (Latitude / Longitude)"
         }
-      }
+      ]
     },
     {
-      "name": "cnic",
-      "type": "masked",
-      "label": {
-        "en": "CNIC Number",
-        "ur": "قومی شناختی کارڈ نمبر"
+      "id": "cat-d-date-time",
+      "title": {
+        "en": "3. Date of Birth, Schedule & Timezone",
+        "ur": "3. تاریخ پیدائش اور اوقات"
       },
-      "placeholder": "35202-1234567-1",
-      "mask": "#####-#######-#",
-      "visibleWhen": {
-        "field": "country",
-        "equals": "PK"
-      },
-      "validation": {
-        "cnic": {
-          "allowUnformatted": false,
-          "message": "Enter a valid 13-digit CNIC in format 35202-1234567-1"
+      "description": "Covers all 9 Date & Time field types including age-validated birthday, dateRange, month, year, duration, and timezone.",
+      "variant": "card",
+      "collapsible": true,
+      "defaultExpanded": true,
+      "fields": [
+        {
+          "name": "birthday",
+          "type": "birthday",
+          "row": "dobStartRow",
+          "label": {
+            "en": "Date of Birth",
+            "ur": "تاریخ پیدائش"
+          },
+          "placeholder": "YYYY-MM-DD",
+          "required": true,
+          "validation": {
+            "minAge": 18,
+            "messages": {
+              "minAge": "You must be at least 18 years old to register"
+            }
+          }
+        },
+        {
+          "name": "preferredStartDate",
+          "type": "date",
+          "row": "dobStartRow",
+          "label": "Target Onboarding Date",
+          "placeholder": "YYYY-MM-DD"
+        },
+        {
+          "name": "dailyDigestTime",
+          "type": "time",
+          "row": "timeSlotRow",
+          "label": "Daily Summary Time",
+          "placeholder": "09:00"
+        },
+        {
+          "name": "welcomeCallDateTime",
+          "type": "dateTime",
+          "row": "timeSlotRow",
+          "label": "Welcome Call Date & Time",
+          "placeholder": "2026-11-15T14:00"
+        },
+        {
+          "name": "vacationBlackoutDates",
+          "type": "dateRange",
+          "label": "Unavailable / Blackout Date Window"
+        },
+        {
+          "name": "fiscalStartMonth",
+          "type": "month",
+          "row": "monthYearRow",
+          "label": "Billing Cycle Start Month"
+        },
+        {
+          "name": "graduationYear",
+          "type": "year",
+          "row": "monthYearRow",
+          "label": "Graduation / Founding Year"
+        },
+        {
+          "name": "focusSessionDuration",
+          "type": "duration",
+          "row": "durTzRow",
+          "label": "Preferred Session Duration (HH:MM)"
+        },
+        {
+          "name": "preferredTimezone",
+          "type": "timezone",
+          "row": "durTzRow",
+          "label": "Primary Timezone"
         }
-      }
+      ]
     },
     {
-      "name": "birthday",
-      "type": "birthday",
-      "label": {
-        "en": "Date of Birth",
-        "ur": "تاریخ پیدائش"
-      },
-      "placeholder": "YYYY-MM-DD",
-      "required": true,
-      "validation": {
-        "minAge": 18,
-        "messages": {
-          "minAge": "You must be at least 18 years old to register"
+      "id": "cat-b-numeric-financial",
+      "title": "4. Numeric, Quota & Financial Preferences",
+      "description": "Covers all 11 Numeric & Financial field types including currency, price, quantity, percentage, sliders, and range sliders.",
+      "variant": "card",
+      "collapsible": true,
+      "defaultExpanded": true,
+      "fields": [
+        {
+          "name": "declaredAge",
+          "type": "age",
+          "row": "numRow1",
+          "label": "Age (Years)",
+          "min": 18,
+          "max": 120
+        },
+        {
+          "name": "teamSize",
+          "type": "integer",
+          "row": "numRow1",
+          "label": "Team Size (Whole Number)",
+          "min": 1,
+          "max": 10000
+        },
+        {
+          "name": "yearsOfExperience",
+          "type": "number",
+          "row": "numRow2",
+          "label": "Years of Experience",
+          "min": 0,
+          "max": 60
+        },
+        {
+          "name": "cgpa",
+          "type": "decimal",
+          "row": "numRow2",
+          "label": "Score / GPA (Decimal)",
+          "min": 0,
+          "max": 4,
+          "precision": 2
+        },
+        {
+          "name": "expectedCompensation",
+          "type": "currency",
+          "row": "finRow1",
+          "label": "Annual Budget / Compensation",
+          "currency": "USD",
+          "precision": 2
+        },
+        {
+          "name": "consultingHourlyRate",
+          "type": "price",
+          "row": "finRow1",
+          "label": "Hourly Rate",
+          "currency": "USD",
+          "precision": 2
+        },
+        {
+          "name": "workspaceSeats",
+          "type": "quantity",
+          "row": "finRow2",
+          "label": "Workspace Seats",
+          "min": 1,
+          "max": 100,
+          "step": 1
+        },
+        {
+          "name": "taxWithholdingPct",
+          "type": "percentage",
+          "row": "finRow2",
+          "label": "Tax Withholding (%)",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "name": "monthlySpendLimit",
+          "type": "slider",
+          "label": "Monthly Usage Cap ($)",
+          "min": 0,
+          "max": 10000,
+          "step": 250,
+          "prefix": "$"
+        },
+        {
+          "name": "salaryExpectationRange",
+          "type": "rangeSlider",
+          "label": "Target Compensation Band ($)",
+          "min": 20000,
+          "max": 250000,
+          "step": 5000,
+          "prefix": "$"
         }
-      }
+      ]
     },
     {
-      "name": "password",
-      "type": "password",
-      "label": {
-        "en": "Password",
-        "ur": "پاس ورڈ"
-      },
-      "placeholder": "Minimum 8 characters",
-      "required": true,
-      "showStrengthIndicator": true,
-      "visibilityToggle": {
-        "showIcon": "eye",
-        "hideIcon": "eye-off",
-        "showLabel": "Show password",
-        "hideLabel": "Hide password"
-      },
-      "validation": {
-        "password": {
-          "minLength": 8,
-          "requireUppercase": true,
-          "requireLowercase": true,
-          "requireNumber": true,
-          "requireSpecialChar": true,
-          "disallowSpaces": true
+      "id": "cat-c-selection-choice",
+      "title": "5. Plan, Skills, Tags & Choice Controls",
+      "description": "Covers all 14 Selection & Choice field types including native select, searchable multi-select, autocomplete, chips, tags, rating, and color picker.",
+      "variant": "card",
+      "collapsible": true,
+      "defaultExpanded": true,
+      "fields": [
+        {
+          "name": "preferredPlan",
+          "type": "radioGroup",
+          "label": "Membership Plan",
+          "options": [
+            { "label": "Starter (Free)", "value": "starter", "description": "Up to 3 active forms" },
+            { "label": "Pro ($19/mo)", "value": "pro", "description": "Unlimited forms, custom themes & analytics" },
+            { "label": "Enterprise", "value": "enterprise", "description": "SSO, audit logs & SLA support" }
+          ]
+        },
+        {
+          "name": "department",
+          "type": "select",
+          "row": "selRow1",
+          "label": "Primary Department",
+          "options": [
+            { "label": "Mobile Engineering", "value": "mobile" },
+            { "label": "Full-Stack Product", "value": "fullstack" },
+            { "label": "Design Systems", "value": "design" },
+            { "label": "Operations & Growth", "value": "ops" }
+          ]
+        },
+        {
+          "name": "industrySector",
+          "type": "searchableSelect",
+          "row": "selRow1",
+          "label": "Industry Sector",
+          "searchPlaceholder": "Search sectors...",
+          "options": [
+            { "label": "FinTech & Payments", "value": "fintech" },
+            { "label": "HealthTech", "value": "health" },
+            { "label": "E-Commerce & Retail", "value": "ecommerce" },
+            { "label": "EdTech", "value": "edtech" },
+            { "label": "Developer Tools & SaaS", "value": "devtools" }
+          ]
+        },
+        {
+          "name": "spokenLanguages",
+          "type": "multiSelect",
+          "label": "Spoken Languages",
+          "options": [
+            { "label": "English", "value": "en" },
+            { "label": "Urdu (اردو)", "value": "ur" },
+            { "label": "Arabic (العربية)", "value": "ar" },
+            { "label": "Spanish", "value": "es" }
+          ]
+        },
+        {
+          "name": "technicalSkills",
+          "type": "searchableMultiSelect",
+          "label": "Technical Stack (Searchable Multi-Select)",
+          "searchPlaceholder": "Filter skills...",
+          "selectAll": true,
+          "options": [
+            { "label": "TypeScript", "value": "typescript", "group": "Languages" },
+            { "label": "Swift / SwiftUI", "value": "swiftui", "group": "Native" },
+            { "label": "Kotlin / Jetpack Compose", "value": "compose", "group": "Native" },
+            { "label": "Expo SDK 58", "value": "expo", "group": "Frameworks" },
+            { "label": "React Native", "value": "rn", "group": "Frameworks" },
+            { "label": "GraphQL & REST", "value": "api", "group": "Backend" }
+          ]
+        },
+        {
+          "name": "universityOrAlmaMater",
+          "type": "autocomplete",
+          "label": "University / Institution (Autocomplete)",
+          "placeholder": "Type to filter suggestions...",
+          "options": [
+            { "label": "NUST — National University of Sciences & Technology", "value": "NUST" },
+            { "label": "LUMS — Lahore University of Management Sciences", "value": "LUMS" },
+            { "label": "FAST-NUCES", "value": "FAST" },
+            { "label": "COMSATS University", "value": "COMSATS" },
+            { "label": "MIT — Massachusetts Institute of Technology", "value": "MIT" },
+            { "label": "Stanford University", "value": "Stanford" }
+          ]
+        },
+        {
+          "name": "interests",
+          "type": "chips",
+          "label": "Topics of Interest (Chips)",
+          "maxSelections": 4,
+          "options": [
+            { "label": "Native UI", "value": "native-ui" },
+            { "label": "Design Tokens", "value": "tokens" },
+            { "label": "JSON Schema", "value": "schema" },
+            { "label": "AI Agents", "value": "ai" },
+            { "label": "Offline-First", "value": "offline" }
+          ]
+        },
+        {
+          "name": "profileTags",
+          "type": "tagInput",
+          "label": "Custom Profile Tags",
+          "placeholder": "Type a tag and press Add..."
+        },
+        {
+          "name": "notificationChannels",
+          "type": "checkboxGroup",
+          "label": "Alert Channels",
+          "options": [
+            { "label": "Push Notifications", "value": "push" },
+            { "label": "Email Digests", "value": "email" },
+            { "label": "SMS Security Alerts", "value": "sms" }
+          ]
+        },
+        {
+          "name": "onboardingExperienceRating",
+          "type": "rating",
+          "row": "rateColorRow",
+          "label": "Form Experience Rating",
+          "maxRating": 5
+        },
+        {
+          "name": "avatarBadgeColor",
+          "type": "colorPicker",
+          "row": "rateColorRow",
+          "label": "Profile Theme Color"
         }
-      }
+      ]
     },
     {
-      "name": "confirmPassword",
-      "type": "confirmPassword",
-      "label": {
-        "en": "Confirm Password",
-        "ur": "پاس ورڈ کی تصدیق کریں"
-      },
-      "placeholder": "Re-enter your password",
-      "passwordField": "password",
-      "required": true,
-      "visibilityToggle": {
-        "showIcon": "eye",
-        "hideIcon": "eye-off"
-      },
-      "validation": {
-        "equalsField": "password",
-        "messages": {
-          "equalsField": "Confirm password must match password"
+      "id": "cat-f-uploads-media",
+      "title": "6. Avatar, Camera, Documents, Media & Signature",
+      "description": "Covers all 11 File & Media Upload field types with strict MIME type and byte-size validation.",
+      "variant": "card",
+      "collapsible": true,
+      "defaultExpanded": true,
+      "fields": [
+        {
+          "name": "avatar",
+          "type": "avatar",
+          "row": "imgUploadRow",
+          "label": "Profile Avatar",
+          "upload": {
+            "allowedMimeTypes": ["image/jpeg", "image/png", "image/webp"],
+            "maxFileSize": 5242880,
+            "sources": ["camera", "gallery"],
+            "buttonLabel": "Select Avatar"
+          }
+        },
+        {
+          "name": "liveVerificationPhoto",
+          "type": "camera",
+          "row": "imgUploadRow",
+          "label": "Live Camera Capture",
+          "upload": {
+            "sources": ["camera"],
+            "maxFileSize": 5242880,
+            "buttonLabel": "Open Camera"
+          }
+        },
+        {
+          "name": "profileBannerImage",
+          "type": "image",
+          "row": "bannerMultiImgRow",
+          "label": "Cover Banner Image",
+          "upload": {
+            "allowedMimeTypes": ["image/*"],
+            "maxFileSize": 8388608
+          }
+        },
+        {
+          "name": "portfolioScreenshots",
+          "type": "multipleImages",
+          "row": "bannerMultiImgRow",
+          "label": "Portfolio Gallery (Multiple Images)",
+          "upload": {
+            "maxFiles": 4,
+            "maxFileSize": 8388608
+          }
+        },
+        {
+          "name": "resumeDocument",
+          "type": "document",
+          "row": "docPdfRow",
+          "label": "Resume / CV Document",
+          "upload": {
+            "maxFileSize": 10485760
+          }
+        },
+        {
+          "name": "idScanPdf",
+          "type": "pdf",
+          "row": "docPdfRow",
+          "label": "Verification PDF",
+          "upload": {
+            "allowedMimeTypes": ["application/pdf"],
+            "maxFileSize": 10485760
+          }
+        },
+        {
+          "name": "sshPublicKeyFile",
+          "type": "file",
+          "row": "fileMultiRow",
+          "label": "SSH Public Key File",
+          "upload": {
+            "maxFileSize": 1048576
+          }
+        },
+        {
+          "name": "complianceCertificates",
+          "type": "multipleFiles",
+          "row": "fileMultiRow",
+          "label": "Supporting Attachments (Multiple Files)",
+          "upload": {
+            "maxFiles": 5,
+            "maxFileSize": 10485760
+          }
+        },
+        {
+          "name": "introVideoClip",
+          "type": "video",
+          "row": "avMediaRow",
+          "label": "Short Intro Video",
+          "upload": {
+            "allowedMimeTypes": ["video/*"],
+            "maxFileSize": 26214400
+          }
+        },
+        {
+          "name": "pronunciationAudio",
+          "type": "audio",
+          "row": "avMediaRow",
+          "label": "Name Pronunciation Audio",
+          "upload": {
+            "allowedMimeTypes": ["audio/*"],
+            "maxFileSize": 10485760
+          }
+        },
+        {
+          "name": "termsSignature",
+          "type": "signature",
+          "label": "Digital Consent Signature"
         }
-      }
+      ]
     },
     {
-      "name": "avatar",
-      "type": "avatar",
-      "label": "Profile Picture (Optional)",
-      "upload": {
-        "allowedMimeTypes": ["image/jpeg", "image/png", "image/webp"],
-        "allowedExtensions": [".jpg", ".jpeg", ".png", ".webp"],
-        "maxFileSize": 5242880,
-        "maxFiles": 1,
-        "sources": ["camera", "gallery"],
-        "imageQuality": 0.85,
-        "buttonLabel": "Select Avatar"
-      }
-    },
-    {
-      "name": "marketingOptIn",
-      "type": "switch",
-      "label": "Receive product updates and security tips"
-    },
-    {
-      "name": "acceptTerms",
-      "type": "checkbox",
-      "label": {
-        "en": "I agree to the Terms of Service and Privacy Policy",
-        "ur": "میں شرائط و ضوابط سے متفق ہوں"
-      },
-      "required": true,
-      "validation": {
-        "required": "You must accept the Terms of Service and Privacy Policy"
-      }
+      "id": "cat-g-structural-advanced",
+      "title": "7. Nested Groups, Repeaters, Step Group & Agreements",
+      "description": "Covers nested objectGroup, repeater, arrayGroup, inline section, native fieldGroup, inline stepGroup, staticText, switch, and required checkbox.",
+      "variant": "card",
+      "collapsible": true,
+      "defaultExpanded": true,
+      "fields": [
+        {
+          "name": "emergencyContact",
+          "type": "objectGroup",
+          "label": "Emergency Contact (Object Group)",
+          "fields": [
+            {
+              "name": "contactName",
+              "type": "fullName",
+              "row": "emergRow",
+              "label": "Contact Name",
+              "placeholder": "Bilal Khan"
+            },
+            {
+              "name": "contactPhone",
+              "type": "phone",
+              "row": "emergRow",
+              "label": "Contact Phone",
+              "placeholder": "+92 300 9876543"
+            }
+          ]
+        },
+        {
+          "name": "employmentHistory",
+          "type": "repeater",
+          "label": "Work Experience (Repeater)",
+          "itemLabelTemplate": "Role #{{index}}",
+          "addButtonLabel": "Add Role",
+          "minItems": 0,
+          "maxItems": 5,
+          "fields": [
+            {
+              "name": "company",
+              "type": "organization",
+              "row": "empItemRow",
+              "label": "Company"
+            },
+            {
+              "name": "role",
+              "type": "jobTitle",
+              "row": "empItemRow",
+              "label": "Title"
+            }
+          ]
+        },
+        {
+          "name": "professionalCertifications",
+          "type": "arrayGroup",
+          "label": "Certifications & Awards (Array Group)",
+          "addButtonLabel": "Add Certification",
+          "placeholder": "e.g. Google Associate Android Developer"
+        },
+        {
+          "id": "inlineSocialSection",
+          "type": "section",
+          "label": "Community Preferences (Inline Collapsible Section)",
+          "collapsible": true,
+          "defaultExpanded": true,
+          "fields": [
+            {
+              "name": "openToMentoring",
+              "type": "switch",
+              "label": "Available for peer code reviews & mentoring"
+            }
+          ]
+        },
+        {
+          "id": "securitySettingsGroup",
+          "type": "fieldGroup",
+          "label": "Privacy & Communications (Native FieldGroup)",
+          "fields": [
+            {
+              "name": "marketingOptIn",
+              "type": "switch",
+              "label": "Receive product updates and security tips"
+            }
+          ]
+        },
+        {
+          "id": "securitySetupMiniSteps",
+          "type": "stepGroup",
+          "steps": [
+            {
+              "id": "recovery-question",
+              "title": "Recovery Question",
+              "description": "Optional inline multi-step checklist inside the registration form.",
+              "validateBeforeNext": false,
+              "fields": [
+                {
+                  "name": "securityQuestion",
+                  "type": "select",
+                  "label": "Security Question",
+                  "options": [
+                    { "label": "First pet's name?", "value": "pet" },
+                    { "label": "Favorite childhood book?", "value": "book" },
+                    { "label": "City where your parents met?", "value": "city" }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "recovery-answer",
+              "title": "Recovery Answer",
+              "validateBeforeNext": false,
+              "fields": [
+                {
+                  "name": "securityAnswer",
+                  "type": "text",
+                  "label": "Security Answer",
+                  "placeholder": "Enter memorable answer"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "complianceFootnote",
+          "type": "staticText",
+          "content": "Your sensitive credentials (passwords, PINs, OTPs, CNIC) are protected with native privacy modifiers and excluded from draft storage."
+        },
+        {
+          "name": "acceptTerms",
+          "type": "checkbox",
+          "label": {
+            "en": "I agree to the Terms of Service and Privacy Policy",
+            "ur": "میں شرائط و ضوابط سے متفق ہوں"
+          },
+          "required": true,
+          "validation": {
+            "required": "You must accept the Terms of Service and Privacy Policy"
+          }
+        }
+      ]
     }
   ],
   "validation": {
@@ -459,7 +1161,7 @@
       "borderRadius": 16
     },
     "field": {
-      "height": 52,
+      "height": 50,
       "borderRadius": 12,
       "borderWidth": 1,
       "paddingHorizontal": 14,
@@ -555,6 +1257,6 @@
   "security": {
     "protectSensitiveFields": true,
     "clearSensitiveOnReset": true,
-    "sensitiveFields": ["password", "confirmPassword", "cnic"]
+    "sensitiveFields": ["password", "confirmPassword", "securityPin", "referralOtp", "cnic"]
   }
 }

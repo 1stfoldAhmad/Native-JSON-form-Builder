@@ -59,7 +59,7 @@ export function StructuralFieldRenderer(props: FieldRendererProps) {
       return <ArrayGroupField {...props} />;
     case 'stepGroup':
       return props.field.steps?.length ? (
-        <StepWizardRenderer steps={props.field.steps} />
+        <StepWizardRenderer steps={props.field.steps} inline />
       ) : null;
     default:
       return null;

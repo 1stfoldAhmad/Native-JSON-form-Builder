@@ -1,0 +1,98 @@
+{
+  "id": "product-feedback-survey",
+  "version": "1.0.0",
+  "title": {
+    "en": "Product Feedback & Survey",
+    "ur": "پروڈکٹ فیڈ بیک سروے"
+  },
+  "description": "Share ratings, Net Promoter Score, favorite features, accent color preferences, and beta availability.",
+  "defaults": {
+    "overallRating": 5,
+    "npsScore": 9,
+    "usageFrequency": "daily",
+    "favoriteFeatures": ["json-schema", "native-ui"],
+    "preferredAccentColor": "#2563EB",
+    "allowFollowUp": true
+  },
+  "fields": [
+    {
+      "name": "overallRating",
+      "type": "rating",
+      "label": "Overall Satisfaction",
+      "maxRating": 5,
+      "required": true
+    },
+    {
+      "name": "npsScore",
+      "type": "slider",
+      "label": "How likely are you to recommend ExpoForm to a colleague? (0–10)",
+      "min": 0,
+      "max": 10,
+      "step": 1
+    },
+    {
+      "name": "usageFrequency",
+      "type": "segmentedControl",
+      "label": "How often do you build forms?",
+      "options": [
+        { "label": "Daily", "value": "daily" },
+        { "label": "Weekly", "value": "weekly" },
+        { "label": "Monthly", "value": "monthly" }
+      ]
+    },
+    {
+      "name": "favoriteFeatures",
+      "type": "checkboxGroup",
+      "label": "Which capabilities matter most to your team?",
+      "options": [
+        { "label": "AJV JSON Schema 2020-12 Validation", "value": "json-schema" },
+        { "label": "SwiftUI & Jetpack Compose Native Controls", "value": "native-ui" },
+        { "label": "Conditional Visibility & Computed Formulas", "value": "conditions" },
+        { "label": "RTL & Multi-Language Localization", "value": "i18n" },
+        { "label": "Multi-Step Wizards & Repeaters", "value": "wizards" }
+      ]
+    },
+    {
+      "name": "preferredAccentColor",
+      "type": "colorPicker",
+      "label": "Preferred Brand Accent Color"
+    },
+    {
+      "name": "betaTestingWindow",
+      "type": "dateRange",
+      "label": "Optional Beta Testing Availability Window"
+    },
+    {
+      "name": "improvements",
+      "type": "textarea",
+      "label": "What should we improve next?",
+      "placeholder": "Tell us which workflows or integrations would save you the most time...",
+      "numberOfLines": 4
+    },
+    {
+      "name": "allowFollowUp",
+      "type": "switch",
+      "label": "You may contact me about my feedback"
+    },
+    {
+      "name": "followUpEmail",
+      "type": "email",
+      "label": "Follow-Up Email",
+      "placeholder": "you@company.com",
+      "visibleWhen": {
+        "field": "allowFollowUp",
+        "equals": true
+      },
+      "requiredWhen": {
+        "field": "allowFollowUp",
+        "equals": true
+      }
+    }
+  ],
+  "submit": {
+    "label": "Send Feedback",
+    "loadingLabel": "Sending Feedback...",
+    "successLabel": "Thank You!",
+    "showReset": true
+  }
+}

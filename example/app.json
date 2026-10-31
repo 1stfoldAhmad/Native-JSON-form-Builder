@@ -2,6 +2,7 @@
   "expo": {
     "name": "ExpoForm Demo",
     "slug": "expo-form-demo",
+    "scheme": "expo-form-demo",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -15,9 +16,11 @@
       "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "output": "single"
     },
     "plugins": [
+      "expo-router",
       [
         "expo-image-picker",
         {
