@@ -1,4 +1,5 @@
 import type { PasswordValidationConfig } from '../types';
+import { compileSafeRegex, MAX_REGEX_INPUT_LENGTH } from '../utils/regexSafety';
 
 export interface PasswordStrengthResult {
   score: 0 | 1 | 2 | 3 | 4;
@@ -24,25 +25,41 @@ export function evaluatePasswordStrength(
   config?: PasswordValidationConfig
 ): PasswordStrengthResult {
   const minLength = config?.minLength ?? 8;
+  const boundedValue =
+    value.length > MAX_REGEX_INPUT_LENGTH
+      ? value.slice(0, MAX_REGEX_INPUT_LENGTH)
+      : value;
   let specialRegex = DEFAULT_SPECIAL_REGEX;
+  let invalidCustomSpecialPattern = false;
   if (config?.specialCharPattern) {
-    try {
-      specialRegex = new RegExp(config.specialCharPattern);
-    } catch {
-      specialRegex = DEFAULT_SPECIAL_REGEX;
+    const safeSpecial = compileSafeRegex(config.specialCharPattern);
+    if (safeSpecial) {
+      specialRegex = safeSpecial;
+    } else {
+      invalidCustomSpecialPattern = true;
     }
   }
 
   const checks = {
     minLength: value.length >= minLength,
-    uppercase: /[A-Z]/.test(value),
-    lowercase: /[a-z]/.test(value),
-    number: /\d/.test(value),
-    specialChar: specialRegex.test(value),
-    noSpaces: !/\s/.test(value),
+    uppercase: /[A-Z]/.test(boundedValue),
+    lowercase: /[a-z]/.test(boundedValue),
+    number: /\d/.test(boundedValue),
+    specialChar: invalidCustomSpecialPattern ? false : specialRegex.test(boundedValue),
+    noSpaces: !/\s/.test(boundedValue) && value.length <= MAX_REGEX_INPUT_LENGTH,
   };
 
   const errors: string[] = [];
+
+  if (value.length > MAX_REGEX_INPUT_LENGTH) {
+    errors.push(
+      config?.messages?.maxLength ??
+        `Password must be at most ${config?.maxLength ?? MAX_REGEX_INPUT_LENGTH} characters`
+    );
+  }
+  if (invalidCustomSpecialPattern) {
+    errors.push('Unsafe or invalid password special-character pattern configuration');
+  }
 
   if (value.length < minLength) {
     errors.push(

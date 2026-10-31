@@ -6,7 +6,11 @@ import type {
 } from '../types';
 import { deepClone, hasUnsafePathSegment, setByPath } from './deepPath';
 
-const SENSITIVE_FIELD_TYPES = new Set([
+/**
+ * Built-in credential & card-secret field types that are UNCONDITIONALLY sensitive.
+ * Setting `"sensitive": false` in a user or remote `form.json` cannot downgrade these types.
+ */
+export const BUILT_IN_SECRET_FIELD_TYPES: ReadonlySet<string> = new Set([
   'password',
   'newPassword',
   'confirmPassword',
@@ -15,42 +19,51 @@ const SENSITIVE_FIELD_TYPES = new Set([
   'cvv',
 ]);
 
+export function isBuiltInSecretFieldType(type: string): boolean {
+  return BUILT_IN_SECRET_FIELD_TYPES.has(type);
+}
+
 export function isSensitiveField(
   field: Pick<FieldConfig, 'name' | 'type' | 'sensitive'>,
   security?: FormSecurityConfig
 ): boolean {
-  if (field.sensitive === true) return true;
-  if (field.sensitive === false) return false;
-  if (SENSITIVE_FIELD_TYPES.has(field.type)) return true;
+  // 1. Built-in secret types (passwords, PINs, OTPs, CVVs) can NEVER opt out of protection
+  if (BUILT_IN_SECRET_FIELD_TYPES.has(field.type)) return true;
+  // 2. Form-level `security.sensitiveFields` policy cannot be overridden by field-level `false`
   if (field.name && security?.sensitiveFields?.includes(field.name)) return true;
+  // 3. Explicit field-level opt-in for custom/general fields (e.g. CNIC, IBAN, SSN, tax ID)
+  if (field.sensitive === true) return true;
   return false;
 }
 
 export function collectSensitiveFieldPaths(
   fieldsOrConfig: readonly FieldConfig[] | FormConfig,
   security?: FormSecurityConfig,
-  prefix = ''
+  prefix = '',
+  options?: { builtInSecretsOnly?: boolean }
 ): Set<string> {
   if (!Array.isArray(fieldsOrConfig)) {
     const cfg = fieldsOrConfig as FormConfig;
     const sec = security ?? cfg.security;
     const combined = new Set<string>();
-    for (const p of collectSensitiveFieldPaths(cfg.fields ?? [], sec, prefix)) {
+    for (const p of collectSensitiveFieldPaths(cfg.fields ?? [], sec, prefix, options)) {
       combined.add(p);
     }
     for (const section of cfg.sections ?? []) {
       const inline = section.fields.filter((f): f is FieldConfig => typeof f !== 'string');
-      for (const p of collectSensitiveFieldPaths(inline, sec, prefix)) {
+      for (const p of collectSensitiveFieldPaths(inline, sec, prefix, options)) {
         combined.add(p);
       }
     }
     for (const step of cfg.steps ?? []) {
-      for (const p of collectSensitiveFieldPaths(step.fields, sec, prefix)) {
+      for (const p of collectSensitiveFieldPaths(step.fields, sec, prefix, options)) {
         combined.add(p);
       }
     }
-    for (const extra of sec?.sensitiveFields ?? []) {
-      if (!hasUnsafePathSegment(extra)) combined.add(extra);
+    if (!options?.builtInSecretsOnly) {
+      for (const extra of sec?.sensitiveFields ?? []) {
+        if (!hasUnsafePathSegment(extra)) combined.add(extra);
+      }
     }
     return combined;
   }
@@ -59,7 +72,10 @@ export function collectSensitiveFieldPaths(
   const paths = new Set<string>();
   for (const field of fields) {
     const fullPath = field.name ? (prefix ? `${prefix}.${field.name}` : field.name) : prefix;
-    if (field.name && isSensitiveField(field, security) && !hasUnsafePathSegment(fullPath)) {
+    const matches = options?.builtInSecretsOnly
+      ? BUILT_IN_SECRET_FIELD_TYPES.has(field.type)
+      : isSensitiveField(field, security);
+    if (field.name && matches && !hasUnsafePathSegment(fullPath)) {
       paths.add(fullPath);
     }
     if (field.fields?.length) {
@@ -69,20 +85,32 @@ export function collectSensitiveFieldPaths(
           : field.type === 'repeater' && field.name
             ? `${fullPath}.*`
             : prefix;
-      for (const nested of collectSensitiveFieldPaths(field.fields, security, nextPrefix)) {
+      for (const nested of collectSensitiveFieldPaths(
+        field.fields,
+        security,
+        nextPrefix,
+        options
+      )) {
         paths.add(nested);
       }
     }
     if (field.steps?.length) {
       for (const step of field.steps) {
-        for (const nested of collectSensitiveFieldPaths(step.fields, security, prefix)) {
+        for (const nested of collectSensitiveFieldPaths(
+          step.fields,
+          security,
+          prefix,
+          options
+        )) {
           paths.add(nested);
         }
       }
     }
   }
-  for (const extra of security?.sensitiveFields ?? []) {
-    if (!hasUnsafePathSegment(extra)) paths.add(extra);
+  if (!options?.builtInSecretsOnly) {
+    for (const extra of security?.sensitiveFields ?? []) {
+      if (!hasUnsafePathSegment(extra)) paths.add(extra);
+    }
   }
   return paths;
 }
@@ -144,9 +172,7 @@ export function omitSensitiveValues(
   let result: FormValues = deepClone(values);
   for (const path of sensitivePaths) {
     if (hasUnsafePathSegment(path)) continue;
-    if (path.includes('*')) {
-      result = applyAtWildcardPath(result, path.split('.').filter(Boolean), 'omit') as FormValues;
-    } else if (path.includes('.')) {
+    if (path.includes('*') || path.includes('.')) {
       result = applyAtWildcardPath(result, path.split('.').filter(Boolean), 'omit') as FormValues;
     } else if (Object.prototype.hasOwnProperty.call(result, path)) {
       delete result[path];

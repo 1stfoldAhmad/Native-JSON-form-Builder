@@ -92,6 +92,22 @@ describe('Native iOS (SwiftUI) & Android (Jetpack Compose) Platform Contracts & 
       });
       expect(scrollMods.contentModifiers).toEqual([{ $type: 'scrollTargetLayout' }]);
 
+      // When `scroll.keyboardAware === false`, iOS explicitly opts out of SwiftUI `.keyboard` safe-area insets
+      const nonKeyboardAwareScrollMods = iosBridge.getPlatformScrollContainerModifiers(
+        false,
+        mockScrollState,
+        false
+      );
+      expect(nonKeyboardAwareScrollMods.scrollModifiers.map((m) => m.$type)).toEqual([
+        'scrollDismissesKeyboard',
+        'scrollPosition',
+        'ignoreSafeArea',
+      ]);
+      expect(nonKeyboardAwareScrollMods.scrollModifiers[2]).toEqual({
+        $type: 'ignoreSafeArea',
+        regions: 'keyboard',
+      });
+
       // Field anchor id modifier
       expect(iosBridge.getPlatformFieldAnchorModifiers('expo-form-field-email')).toEqual([
         { $type: 'id', id: 'expo-form-field-email' },

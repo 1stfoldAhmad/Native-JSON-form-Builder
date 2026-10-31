@@ -2,6 +2,12 @@ import { ALL_BUILT_IN_FIELD_TYPES } from '../fields/FieldRegistry';
 import type { ConfigSchemaIssue, FieldConfig, FormConfig } from '../types';
 import { hasUnsafePathSegment } from '../utils/deepPath';
 import {
+  analyzeRegexSafety,
+  inspectSchemaRegexPatterns,
+} from '../utils/regexSafety';
+import { isBuiltInSecretFieldType } from '../utils/security';
+import { NAMED_VALIDATION_PRESETS } from '../validation/patterns';
+import {
   createFormSchemaAjv,
   normalizeEmbeddedJsonSchema,
 } from '../validation/ValidationEngine';
@@ -166,27 +172,37 @@ export function parseAndValidateFormConfig(
         severity: 'error',
       });
     } else {
-      try {
-        const ajv = createFormSchemaAjv();
-        const normalizedSchema = normalizeEmbeddedJsonSchema(
-          candidate.schema as Record<string, unknown>
-        );
-        const metaValid = ajv.validateSchema(normalizedSchema);
-        if (metaValid === false) {
-          issues.push({
-            path: 'config.schema',
-            message: `Invalid JSON Schema in "config.schema": ${ajv.errorsText(ajv.errors, { dataVar: 'schema' })}`,
-            severity: 'error',
-          });
-        } else {
-          ajv.compile(normalizedSchema);
-        }
-      } catch (err) {
+      const unsafeSchemaPatterns = inspectSchemaRegexPatterns(candidate.schema, 'config.schema');
+      for (const unsafeItem of unsafeSchemaPatterns) {
         issues.push({
-          path: 'config.schema',
-          message: `Invalid JSON Schema in "config.schema": ${err instanceof Error ? err.message : 'compilation failed'}`,
+          path: unsafeItem.path,
+          message: `Unsafe regular expression "${unsafeItem.pattern}" in schema: ${unsafeItem.reason}`,
           severity: 'error',
         });
+      }
+      if (unsafeSchemaPatterns.length === 0) {
+        try {
+          const ajv = createFormSchemaAjv();
+          const normalizedSchema = normalizeEmbeddedJsonSchema(
+            candidate.schema as Record<string, unknown>
+          );
+          const metaValid = ajv.validateSchema(normalizedSchema);
+          if (metaValid === false) {
+            issues.push({
+              path: 'config.schema',
+              message: `Invalid JSON Schema in "config.schema": ${ajv.errorsText(ajv.errors, { dataVar: 'schema' })}`,
+              severity: 'error',
+            });
+          } else {
+            ajv.compile(normalizedSchema);
+          }
+        } catch (err) {
+          issues.push({
+            path: 'config.schema',
+            message: `Invalid JSON Schema in "config.schema": ${err instanceof Error ? err.message : 'compilation failed'}`,
+            severity: 'error',
+          });
+        }
       }
     }
   }
@@ -213,15 +229,36 @@ export function parseAndValidateFormConfig(
       : []
   );
 
-  const checkRegexSyntax = (pattern: unknown, flags: unknown, issuePath: string) => {
-    if (typeof pattern !== 'string') return;
-    try {
-      // eslint-disable-next-line no-new
-      new RegExp(pattern, typeof flags === 'string' ? flags : undefined);
-    } catch (e) {
+  const checkRegexSyntax = (
+    pattern: unknown,
+    flags: unknown,
+    issuePath: string,
+    allowPreset = false
+  ) => {
+    if (typeof pattern !== 'string') {
       issues.push({
         path: issuePath,
-        message: `Invalid regular expression "${pattern}": ${e instanceof Error ? e.message : 'syntax error'}`,
+        message: 'Regular expression pattern must be a string.',
+        severity: 'error',
+      });
+      return;
+    }
+    if (allowPreset && flags === undefined && NAMED_VALIDATION_PRESETS.has(pattern)) {
+      return;
+    }
+    if (flags !== undefined && typeof flags !== 'string') {
+      issues.push({
+        path: issuePath,
+        message: 'Regular expression flags must be a string.',
+        severity: 'error',
+      });
+      return;
+    }
+    const safety = analyzeRegexSafety(pattern, typeof flags === 'string' ? flags : undefined);
+    if (!safety.safe) {
+      issues.push({
+        path: issuePath,
+        message: `Unsafe or invalid regular expression "${pattern}": ${safety.reason ?? 'syntax error'}`,
         severity: 'error',
       });
     }
@@ -312,6 +349,18 @@ export function parseAndValidateFormConfig(
         seenFieldNames.add(fullKey);
       }
 
+      if (
+        field.sensitive === false &&
+        (isBuiltInSecretFieldType(field.type) ||
+          Boolean(field.name && candidate.security?.sensitiveFields?.includes(field.name)))
+      ) {
+        issues.push({
+          path: `${itemPath}.sensitive`,
+          message: `Field "${field.name ?? idx}" (type "${field.type}") is a protected secret field; "sensitive: false" is ignored so draft omission, log redaction, and native privacy modifiers remain enforced.`,
+          severity: 'warning',
+        });
+      }
+
       // Check choice fields without options or dataSource
       if (
         CHOICE_TYPES_EXPECTING_OPTIONS_OR_SOURCE.has(field.type) &&
@@ -376,7 +425,7 @@ export function parseAndValidateFormConfig(
         }
       }
 
-      // Check regex syntax upfront so malformed regex in JSON is reported clearly
+      // Check regex syntax & ReDoS safety upfront so malformed/unsafe regex in JSON is reported clearly
       if (field.validation?.regex) {
         const rules = Array.isArray(field.validation.regex)
           ? field.validation.regex
@@ -384,7 +433,7 @@ export function parseAndValidateFormConfig(
             ? [{ pattern: field.validation.regex }]
             : [field.validation.regex];
         for (const r of rules) {
-          checkRegexSyntax(r.pattern, r.flags, `${itemPath}.validation.regex`);
+          checkRegexSyntax(r.pattern, r.flags, `${itemPath}.validation.regex`, true);
         }
       }
 

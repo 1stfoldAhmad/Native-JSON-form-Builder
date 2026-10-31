@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Button,
   Collapsible,
@@ -251,7 +251,10 @@ function ConditionalGroupField({ field }: FieldRendererProps) {
 function ObjectGroupField({ field, fieldPath, locale }: FieldRendererProps) {
   const { config, colorScheme, isRTL } = useActiveForm();
   const renderFieldList = useRenderFieldList();
-  const formStyles = resolveFormStyles(config.style, config.theme, colorScheme, isRTL);
+  const formStyles = useMemo(
+    () => resolveFormStyles(config.style, config.theme, colorScheme, isRTL),
+    [config.style, config.theme, colorScheme, isRTL]
+  );
   const title = resolveLocalizedText(field.label, locale, config.i18n?.translations);
 
   return (
@@ -274,7 +277,10 @@ function RepeaterField({
 }: FieldRendererProps) {
   const { config, colorScheme, isRTL, renderIcon } = useActiveForm();
   const renderFieldList = useRenderFieldList();
-  const formStyles = resolveFormStyles(config.style, config.theme, colorScheme, isRTL);
+  const formStyles = useMemo(
+    () => resolveFormStyles(config.style, config.theme, colorScheme, isRTL),
+    [config.style, config.theme, colorScheme, isRTL]
+  );
 
   const items: Record<string, unknown>[] = Array.isArray(value)
     ? (value as Record<string, unknown>[])

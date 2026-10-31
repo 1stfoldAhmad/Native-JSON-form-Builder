@@ -5,6 +5,7 @@ import type {
   FormValues,
 } from '../types';
 import { deepEqual, getByPath, isEmptyValue } from '../utils/deepPath';
+import { safeRegexTest } from '../utils/regexSafety';
 
 const RESERVED_CLAUSE_KEYS = new Set([
   'field',
@@ -163,15 +164,11 @@ export function evaluateCondition(
 
   if (clause.matches !== undefined) {
     if (typeof actual !== 'string') return false;
-    try {
-      const regex =
-        typeof clause.matches === 'string'
-          ? new RegExp(clause.matches)
-          : new RegExp(clause.matches.pattern, clause.matches.flags);
-      if (!regex.test(actual)) return false;
-    } catch {
-      return false;
-    }
+    const matchRes =
+      typeof clause.matches === 'string'
+        ? safeRegexTest(clause.matches, actual)
+        : safeRegexTest(clause.matches.pattern, actual, clause.matches.flags);
+    if (matchRes.blocked || !matchRes.matched) return false;
   }
 
   if (clause.isEmpty !== undefined) {

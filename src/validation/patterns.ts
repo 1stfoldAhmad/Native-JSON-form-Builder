@@ -1,4 +1,9 @@
 import { getCountryByCode } from '../utils/countries';
+import {
+  compileSafeRegex,
+  MAX_REGEX_INPUT_LENGTH,
+  safeRegexTest,
+} from '../utils/regexSafety';
 
 export const VALIDATION_PATTERNS = {
   email: /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/,
@@ -13,6 +18,15 @@ export const VALIDATION_PATTERNS = {
   hexColor: /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/,
 } as const;
 
+export const NAMED_VALIDATION_PRESETS: ReadonlySet<string> = new Set([
+  'email',
+  'pkPhone',
+  'intlPhone',
+  'cnic',
+  'username',
+  'url',
+]);
+
 export function normalizePhoneDigits(phone: string): string {
   const trimmed = phone.trim();
   const hasPlus = trimmed.startsWith('+');
@@ -21,7 +35,10 @@ export function normalizePhoneDigits(phone: string): string {
 }
 
 export function isValidEmail(value: string): boolean {
-  return VALIDATION_PATTERNS.email.test(value.trim());
+  if (value.length > MAX_REGEX_INPUT_LENGTH) return false;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 320) return false;
+  return VALIDATION_PATTERNS.email.test(trimmed);
 }
 
 export function isValidPhone(
@@ -30,6 +47,7 @@ export function isValidPhone(
     | string
     | { mode?: string; countryCode?: string; customPattern?: string }
 ): boolean {
+  if (value.length > MAX_REGEX_INPUT_LENGTH) return false;
   const raw = value.trim();
   if (!raw) return false;
 
@@ -39,11 +57,8 @@ export function isValidPhone(
       : countryOrOptions;
 
   if (options?.customPattern) {
-    try {
-      return new RegExp(options.customPattern).test(raw);
-    } catch {
-      return false;
-    }
+    const res = safeRegexTest(options.customPattern, raw);
+    return !res.blocked && res.matched;
   }
 
   const country = options?.countryCode?.toUpperCase();
@@ -55,7 +70,10 @@ export function isValidPhone(
   if (country) {
     const meta = getCountryByCode(country);
     if (meta) {
-      return meta.phonePattern.test(raw) || VALIDATION_PATTERNS.intlPhoneNormalized.test(normalizePhoneDigits(raw));
+      return (
+        meta.phonePattern.test(raw) ||
+        VALIDATION_PATTERNS.intlPhoneNormalized.test(normalizePhoneDigits(raw))
+      );
     }
   }
 
@@ -67,6 +85,7 @@ export function isValidPhone(
 }
 
 export function isValidEmailOrPhone(value: string, countryCode?: string): boolean {
+  if (value.length > MAX_REGEX_INPUT_LENGTH) return false;
   const trimmed = value.trim();
   if (!trimmed) return false;
   if (trimmed.includes('@')) {
@@ -76,6 +95,7 @@ export function isValidEmailOrPhone(value: string, countryCode?: string): boolea
 }
 
 export function isValidCNIC(value: string, allowUnformatted = true): boolean {
+  if (value.length > MAX_REGEX_INPUT_LENGTH) return false;
   const trimmed = value.trim();
   if (VALIDATION_PATTERNS.cnicDashed.test(trimmed)) return true;
   if (allowUnformatted && VALIDATION_PATTERNS.cnicPlain.test(trimmed)) return true;
@@ -83,6 +103,7 @@ export function isValidCNIC(value: string, allowUnformatted = true): boolean {
 }
 
 export function isValidPostalCode(value: string, countryCode?: string): boolean {
+  if (value.length > MAX_REGEX_INPUT_LENGTH) return false;
   const trimmed = value.trim();
   if (!trimmed) return false;
   const meta = getCountryByCode(countryCode);
@@ -92,21 +113,27 @@ export function isValidPostalCode(value: string, countryCode?: string): boolean 
   return /^[A-Za-z0-9\s-]{3,12}$/.test(trimmed);
 }
 
-export function resolveNamedPattern(patternOrPreset: string): RegExp {
-  switch (patternOrPreset) {
-    case 'email':
-      return VALIDATION_PATTERNS.email;
-    case 'pkPhone':
-      return VALIDATION_PATTERNS.pkPhone;
-    case 'intlPhone':
-      return VALIDATION_PATTERNS.intlPhoneNormalized;
-    case 'cnic':
-      return VALIDATION_PATTERNS.cnicDashed;
-    case 'username':
-      return VALIDATION_PATTERNS.username;
-    case 'url':
-      return VALIDATION_PATTERNS.url;
-    default:
-      return new RegExp(patternOrPreset);
+export function resolveNamedPattern(
+  patternOrPreset: string,
+  flags?: string
+): RegExp | null {
+  if (!flags) {
+    switch (patternOrPreset) {
+      case 'email':
+        return VALIDATION_PATTERNS.email;
+      case 'pkPhone':
+        return VALIDATION_PATTERNS.pkPhone;
+      case 'intlPhone':
+        return VALIDATION_PATTERNS.intlPhoneNormalized;
+      case 'cnic':
+        return VALIDATION_PATTERNS.cnicDashed;
+      case 'username':
+        return VALIDATION_PATTERNS.username;
+      case 'url':
+        return VALIDATION_PATTERNS.url;
+      default:
+        break;
+    }
   }
+  return compileSafeRegex(patternOrPreset, flags);
 }

@@ -19,6 +19,7 @@ import {
   parseNumericInput,
   resolveLocalizedText,
 } from '../utils/formatting';
+import { isSensitiveField } from '../utils/security';
 
 /**
  * Unified native renderer for all 11 Category B Numeric & Financial fields:
@@ -281,9 +282,13 @@ function NumericTextInputFieldRenderer({
   };
 
   const hasAddons = Boolean(prefix || suffix || showStepper);
+  const isFieldSensitive = useMemo(
+    () => isSensitiveField(field, config.security),
+    [field, config.security]
+  );
   const inputModifiers = useMemo(
-    () => getPlatformSensitiveInputModifiers(Boolean(field.sensitive), field.type),
-    [field.sensitive, field.type]
+    () => getPlatformSensitiveInputModifiers(isFieldSensitive, field.type),
+    [isFieldSensitive, field.type]
   );
 
   const inputNode = (

@@ -97,11 +97,23 @@ export {
   isRTLLocale,
 } from './utils/formatting';
 export {
+  BUILT_IN_SECRET_FIELD_TYPES,
+  isBuiltInSecretFieldType,
   isSensitiveField,
   collectSensitiveFieldPaths,
   omitSensitiveValues,
   redactSensitiveForLog,
 } from './utils/security';
+export {
+  MAX_REGEX_PATTERN_LENGTH,
+  MAX_REGEX_INPUT_LENGTH,
+  MAX_REGEX_QUANTIFIER_BOUND,
+  analyzeRegexSafety,
+  compileSafeRegex,
+  safeRegexTest,
+  type RegexSafetyAnalysis,
+  type SafeRegexTestResult,
+} from './utils/regexSafety';
 
 // Complete TypeScript Configuration Contract & Types
 export { defineFormConfig } from './types/config';
